@@ -1,0 +1,6 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/HTML-Content-Extractor-0.01.t
+lib/HTML-Content-Extractor-0.01.pm
