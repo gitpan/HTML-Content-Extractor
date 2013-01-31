@@ -1,0 +1,22 @@
+--- #YAML:1.0
+name:               HTML-Content-Extractor
+version:            0.12
+abstract:           Recieving a main text of publication from HTML page and main media content that is bound to the text
+author:
+    - Alexander Borisov <lex.borisov@gmail.com>
+license:            perl
+distribution_type:  module
+configure_requires:
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
+requires:
+    perl:  5.008
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.56
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4
