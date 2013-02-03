@@ -148,7 +148,6 @@ void html_tree(struct tree_list *);
 
 int get_tag_id(struct tags *, char *);
 
-
 struct html_tree * get_child(struct tree_list *, long);
 struct html_tree * get_child_n(struct tree_list *, long);
 struct html_tree * get_parent(struct tree_list *);
@@ -183,7 +182,9 @@ struct mem_params * find_param_by_key_in_element(struct mem_tag *, char *);
 
 struct html_tree * check_html(struct tree_list *, struct max_element *);
 
+void get_raw_text(struct tree_list *, struct lbuffer *);
 void get_text_without_element(struct tree_list *, struct lbuffer *);
+void get_text_with_element(struct tree_list *, struct lbuffer *, char **, int);
 void get_text_images_href(struct tree_list *, struct mlist *, int);
 
 void clean_text(struct tree_entity *, struct lbuffer *);

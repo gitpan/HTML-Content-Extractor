@@ -2,9 +2,6 @@
 #include "perl.h"
 #include "XSUB.h"
 
-#include <sys/types.h>
-#include <sys/time.h>
-
 #include "html.h"
 
 typedef htmltag_t * HTML__Content__Extractor;
@@ -282,6 +279,116 @@ void get_text_without_element(struct tree_list *my_r, struct lbuffer *lbuff) {
     my_r->nco_pos = save_nco_pos;
 }
 
+void _get_text_with_element_cl(struct tree_list *my_r, struct lbuffer *lbuff, char **elements, int ei_size) {
+    struct html_tree * tag = NULL;
+    int element_p_id  = get_tag_id(my_r->tags, "p");
+    int element_br_id  = get_tag_id(my_r->tags, "br");
+    
+    while ((tag = get_next_element_in_level(my_r))) {
+        
+        int is, it, ip = -1, in = -1;
+        for (is = 0; is <= ei_size; is++) {
+            it = -1;
+            while (elements[is][++it]) {
+                in = it + 1;
+                if((my_r->tags->name[tag->tag_id][in] == '\0' && elements[is][in] != '\0') ||
+                   (my_r->tags->name[tag->tag_id][in] != '\0' && elements[is][in] == '\0') ||
+                   my_r->tags->name[tag->tag_id][it] != elements[is][it]
+                ) {
+                    break;
+                }
+                else if(my_r->tags->name[tag->tag_id][in] == '\0' && elements[is][in] == '\0') {
+                    ip = tag->tag_id;
+                    break;
+                }
+            }
+        }
+        
+        if(ip != -1) {
+            long il;
+            for (il = tag->tag_start; il < tag->tag_body_start; il++) {
+                _add_to_lbuff(lbuff, my_r->html[il]);
+            }
+            
+            long save_nco_pos = my_r->nco_pos;
+            long save_cur_pos = my_r->cur_pos;
+            my_r->nco_pos = tag->id;
+            my_r->cur_pos = tag->id;
+            
+            _get_text_with_element_cl(my_r, lbuff, elements, ei_size);
+            
+            for (il = tag->tag_body_stop + 1; il <= tag->tag_stop; il++) {
+                _add_to_lbuff(lbuff, my_r->html[il]);
+            }
+            
+            my_r->nco_pos = save_nco_pos;
+            my_r->cur_pos = save_cur_pos;
+            
+            if(get_next_element_in_level_skip_curr(my_r) == NULL)
+                break;
+            
+            get_prev_element_in_level(my_r);
+            
+            //continue;
+        }
+        
+        if(my_r->tags->type[ tag->tag_id ] == TYPE_TAG_BLOCK || my_r->tags->type[ tag->tag_id ] == TYPE_TAG_ONE) {
+            if((tag->tag_id == element_br_id && ip != element_br_id) || (my_r->tags->type[ tag->tag_id ] == TYPE_TAG_BLOCK))
+                _add_to_lbuff(lbuff, '\n');
+            
+            if(tag->tag_id == element_p_id && ip != element_p_id) {
+                _add_to_lbuff(lbuff, '\n');
+            }
+            
+            continue;
+        }
+        
+        if(my_r->tags->type[ tag->tag_id ] == TYPE_TAG_SIMPLE) {
+            if(get_next_element_in_level_skip_curr(my_r) == NULL)
+                break;
+            
+            get_prev_element_in_level(my_r);
+            continue;
+        }
+        
+        if(my_r->tags->type[ tag->tag_id ] != TYPE_TAG_TEXT) {
+            continue;
+        }
+        
+        long il;
+        for (il = tag->tag_body_start; il <= tag->tag_body_stop; il++) {
+            if(my_r->html[il] != '\n')
+                _add_to_lbuff(lbuff, my_r->html[il]);
+        }
+    }
+}
+
+void get_text_with_element(struct tree_list *my_r, struct lbuffer *lbuff, char **elements, int ei_size) {
+    long save_nco_pos = my_r->nco_pos;
+    
+    lbuff->buff = (char *)malloc(sizeof(char) * lbuff->buff_size);
+    
+    _get_text_with_element_cl(my_r, lbuff, elements, ei_size);
+    _add_to_lbuff(lbuff, '\0');
+    
+    my_r->nco_pos = save_nco_pos;
+}
+
+void get_raw_text(struct tree_list *my_r, struct lbuffer *lbuff) {
+    struct html_tree * tag = get_curr_element(my_r);
+    
+    lbuff->i = -1;
+    lbuff->buff_size = (tag->tag_stop - tag->tag_start) + 1;
+    lbuff->buff = (char *)malloc(sizeof(char) * lbuff->buff_size);
+    
+    long il;
+    for (il = tag->tag_start; il <= tag->tag_stop; il++) {
+        lbuff->buff[++lbuff->i] = my_r->html[il];
+    }
+    
+    lbuff->buff[++lbuff->i] = '\0';
+}
+
 int _check_img_size(char *str) {
     int rv = 0;
     
@@ -322,7 +429,9 @@ void get_text_images_href(struct tree_list *my_r, struct mlist *buff, int inc) {
                 
                 for (i = 0; i <= buff->i; i++) {
                     for (m = 0; m <= param->lvalue; m++) {
-                        if(((buff->buff[i][m] == '\0' && param->value[m] != '\0') && (buff->buff[i][m] != '\0' && param->value[m] == '\0')) || buff->buff[i][m] != param->value[m]) {
+                        if(((buff->buff[i][m] == '\0' && param->value[m] != '\0') && (buff->buff[i][m] != '\0' && param->value[m] == '\0')) ||
+                           buff->buff[i][m] != param->value[m]
+                        ) {
                             break;
                         }
                         else if(param->value[m] == '\0' && buff->buff[i][m] == '\0') {
@@ -562,8 +671,10 @@ void html_tree(struct tree_list *my_r)
                         }
                     }
                     
-                    if(html_tree_buff > -1) {
-                        if(tags->type[ html_tree[ index_ol[tag_ol] ].tag_id ] == TYPE_TAG_SIMPLE && html_tree[ index_ol[tag_ol] ].tag_body_stop == -1 && tag_id != html_tree[ index_ol[tag_ol] ].tag_id) {
+                    if(html_tree_buff > 0) {
+                        if(tags->type[ html_tree[ index_ol[tag_ol] ].tag_id ] == TYPE_TAG_SIMPLE &&
+                           html_tree[ index_ol[tag_ol] ].tag_body_stop == -1 && tag_id != html_tree[ index_ol[tag_ol] ].tag_id
+                        ) {
                             pos      = 0;
                             next_tag = 0;
                             my_buff--;
@@ -654,7 +765,7 @@ void html_tree(struct tree_list *my_r)
                     my[my_buff].stop_otag = i - 2;
                 }
                 
-                if(html_tree_buff > -1) {
+                if(html_tree_buff > 0) {
                     if(tags->type[ html_tree[ index_ol[tag_ol] ].tag_id ] == TYPE_TAG_SIMPLE && html_tree[ index_ol[tag_ol] ].tag_stop == -1) {
                         pos      = 0;
                         next_tag = 0;
@@ -760,7 +871,6 @@ void html_tree(struct tree_list *my_r)
                 
                 if(my[my_buff].lparams > -1) {
                     if(my[my_buff].params[ my[my_buff].lparams ].lkey == 1 && my[my_buff].params[ my[my_buff].lparams ].key[0] == '/') {
-                        
                         free(my[my_buff].params[ my[my_buff].lparams ].key);
                         free(my[my_buff].params[ my[my_buff].lparams ].value);
                         
@@ -778,7 +888,9 @@ void html_tree(struct tree_list *my_r)
         switch (pos) {
             case 0:
                 if(nc == '<' && ((html[i] >= 'a' && html[i] <= 'z') || (html[i] >= 'A' && html[i] <= 'Z') || html[i] == '/' || html[i] == '!')) {
-                    if(tags->type[ html_tree[ index_ol[tag_ol] ].tag_id ] == TYPE_TAG_SIMPLE && html_tree[ index_ol[tag_ol] ].tag_stop == -1) {
+                    if(html_tree[ index_ol[tag_ol] ].tag_id != -1 && tags->type[ html_tree[ index_ol[tag_ol] ].tag_id ] == TYPE_TAG_SIMPLE &&
+                       html_tree[ index_ol[tag_ol] ].tag_stop == -1
+                    ) {
                         if(html[i] == '!' && html[i+1] == '-' && html[i+2] == '-'){
                             is_comment = 1;
                             pos = 6;
@@ -1577,9 +1689,6 @@ void clean_tree(struct tree_list * my_r) {
         free(my_r->list);
 }
 
-//////////////
-// HTML Entities
-/////////////////////
 struct tree_entity * create_entity_tree(void) {
     struct tree_entity *entities = (struct tree_entity *)malloc(sizeof(struct tree_entity) * 128);
     
@@ -1918,7 +2027,6 @@ void clean_tree_entity(struct tree_entity *entities) {
     }
 }
 
-
 MODULE = HTML::Content::Extractor  PACKAGE = HTML::Content::Extractor
 
 PROTOTYPES: DISABLE
@@ -1946,7 +2054,7 @@ analyze(my_r, html)
     char *html;
 
     CODE:
-        setbuf(stdout, NULL);
+        //setbuf(stdout, NULL);
         
         clean_tree(my_r);
         
@@ -1978,6 +2086,92 @@ get_main_text(my_r, is_utf8 = 1)
             struct lbuffer main_buff = {-1, 1024 * 1024, NULL};
             get_text_without_element(my_r, &main_buff);
             clean_text(my_r->entities, &main_buff);
+            
+            if(main_buff.i < 0) {
+                RETVAL = newSVsv(&PL_sv_undef);
+            } else {
+                if(is_utf8) {
+                    SV *nm = newSVpv(main_buff.buff, main_buff.i);
+                    SvUTF8_on(nm);
+                    RETVAL = nm;
+                } else {
+                    RETVAL = newSVpv(main_buff.buff, main_buff.i);
+                }
+            }
+            
+            free(main_buff.buff);
+        }
+    OUTPUT:
+        RETVAL
+
+SV*
+get_main_text_with_elements(my_r, is_utf8 = 1, elements_ref = &PL_sv_undef)
+    HTML::Content::Extractor my_r;
+    int is_utf8;
+    SV* elements_ref;
+    
+    CODE:
+        AV* array;
+        char **elements;
+        int elem_size = -1;
+        
+        if(SvROK(elements_ref)) {
+            array = (AV*)SvRV(elements_ref);
+            
+            elem_size = av_len(array);
+            elements = (char **)malloc(sizeof(char *) * elem_size + 1);
+            
+            char *tmp;
+            int i;
+            STRLEN len_s;
+            for (i = 0; i <= elem_size; i++) {
+                //SV *elem = av_shift(array);
+                SV** elem = av_fetch(array, i, 0);
+                if(elem != NULL) {
+                    elements[i] = (char *)SvPV(*elem, len_s);
+                }
+            }
+        }
+        
+        if(my_r->list == NULL || my_r->my == NULL || my_r->tags == NULL) {
+            RETVAL = newSVsv(&PL_sv_undef);
+        }
+        else {
+            struct lbuffer main_buff = {-1, 1024 * 1024, NULL};
+            get_text_with_element(my_r, &main_buff, elements, elem_size);
+            
+            if(main_buff.i < 0) {
+                RETVAL = newSVsv(&PL_sv_undef);
+            } else {
+                if(is_utf8) {
+                    SV *nm = newSVpv(main_buff.buff, main_buff.i);
+                    SvUTF8_on(nm);
+                    RETVAL = nm;
+                } else {
+                    RETVAL = newSVpv(main_buff.buff, main_buff.i);
+                }
+            }
+            
+            free(main_buff.buff);
+            if(elem_size > -1) {
+                free(elements);
+            }
+        }
+    OUTPUT:
+        RETVAL
+
+SV*
+get_raw_text(my_r, is_utf8 = 1)
+    HTML::Content::Extractor my_r;
+    int is_utf8;
+    
+    CODE:
+        if(my_r->list == NULL || my_r->my == NULL || my_r->tags == NULL) {
+            RETVAL = newSVsv(&PL_sv_undef);
+        }
+        else {
+            struct lbuffer main_buff = {-1, 1024 * 1024, NULL};
+            get_raw_text(my_r, &main_buff);
             
             if(main_buff.i < 0) {
                 RETVAL = newSVsv(&PL_sv_undef);

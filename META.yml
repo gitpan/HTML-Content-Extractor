@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               HTML-Content-Extractor
-version:            0.12
+version:            0.13
 abstract:           Recieving a main text of publication from HTML page and main media content that is bound to the text
 author:
     - Alexander Borisov <lex.borisov@gmail.com>

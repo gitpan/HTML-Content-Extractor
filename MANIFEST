@@ -11,3 +11,5 @@ t/000_load.t		Load module
 t/001_create.t		Create new object
 t/002_main_text.t	Get main text from HTML
 t/003_main_images.t	Get main images from HTML
+t/004_raw_text.t	Get raw text from HTML
+t/005_main_text_with_elements.t         Get text with elements from HTML

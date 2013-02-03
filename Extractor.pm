@@ -4,7 +4,7 @@ use strict;
 use vars qw($AUTOLOAD $VERSION $ABSTRACT @ISA @EXPORT);
 
 BEGIN {
-	$VERSION = 0.12;
+	$VERSION = 0.13;
 	$ABSTRACT = "Recieving main text of publication from HTML page and main media content that is bound to the text";
 
 	@ISA = qw(Exporter DynaLoader);
@@ -29,8 +29,11 @@ HTML::Content::Extractor - Recieving a main text of publication from HTML page a
  my $obj = HTML::Content::Extractor->new();
  $obj->analyze($html);
  
- my $main_text   = $obj->get_main_text();
- my $main_images = $obj->get_main_images();
+ my $main_text    = $obj->get_main_text();
+ my $main_images  = $obj->get_main_images();
+ 
+ my $raw_text     = $obj->get_raw_text();
+ my $main_text_we = $obj->get_main_text_with_elements(1, ["a", "b", "br", "strike", ...]);
  
  print $main_text, "\n\n";
  
@@ -66,6 +69,26 @@ Creates an HTML document tree and analyzes it.
  # default UTF-8 is on
 
 Return plain text.
+
+=head2 get_raw_text
+
+ # UTF-8
+ my $raw_text = $obj->get_raw_text(1);
+ # or not
+ my $raw_text = $obj->get_raw_text(0);
+ # default UTF-8 is on
+
+Return the main text without post-processing (saving all html tags)
+
+=head2 get_main_text_with_elements
+
+ # UTF-8
+ my $main_text_we = $obj->get_main_text_with_elements(1, ["span", ...]);
+ # or not
+ my $main_text_we = $obj->get_main_text_with_elements(0, ["span", ...]);
+ # default UTF-8 is on
+
+Returns the main text while saving selected html tags. Post-processing is skipped
 
 =head2 get_main_images
 
