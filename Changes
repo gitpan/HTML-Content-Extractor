@@ -1,3 +1,16 @@
+0.14
+    Fixed:
+        - terminated by signal 11 error
+        - logical errors in build html tree
+    Add:
+        + methods: build_tree, get_tree, get_tree_by_element_id
+        + methods: get_element_by_name, get_stat_by_element_id
+        + methods: get_child, get_parent, get_curr_element
+        + methods: get_next_element_curr_level, get_prev_element_curr_level
+        + methods: get_prev_element, set_position
+        + more testcases
+
+--------------------------------------------------
 0.13    2013-02-03
     Fixed:
         - build error in OpenBSD

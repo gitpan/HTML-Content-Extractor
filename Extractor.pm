@@ -1,12 +1,13 @@
 package HTML::Content::Extractor;
 
+use utf8;
 use strict;
 use vars qw($AUTOLOAD $VERSION $ABSTRACT @ISA @EXPORT);
 
 BEGIN {
-	$VERSION = 0.13;
+	$VERSION = 0.14;
 	$ABSTRACT = "Recieving main text of publication from HTML page and main media content that is bound to the text";
-
+	
 	@ISA = qw(Exporter DynaLoader);
 	@EXPORT = qw();
 };
@@ -15,6 +16,7 @@ bootstrap HTML::Content::Extractor $VERSION;
 
 use DynaLoader ();
 use Exporter ();
+
 
 1;
 
@@ -41,7 +43,24 @@ HTML::Content::Extractor - Recieving a main text of publication from HTML page a
  foreach my $url (@$main_images) {
 	print $url, "\n";
  }
-
+ 
+ # html elements
+ my $obj = HTML::Content::Extractor->new();
+ 
+ $obj->build_tree($html);
+ my $tree = $obj->get_tree();
+ 
+ my $i = -1;
+ while( my $element = $obj->get_element_by_name("div", ++$i) ) {
+	print "<", $element->{name};
+	
+	foreach my $key (keys %{$element->{prop}}) {
+		print " ", $key, '="', $element->{prop}->{$key}, '"';
+	}
+	
+	print ">\n";
+ }
+ 
 =head1 DESCRIPTION
 
 This module analyzes an HTML document and extracts the main text (for example front page article contents on the news site) and all related images.
@@ -99,6 +118,84 @@ Returns the main text while saving selected html tags. Post-processing is skippe
  # default UTF-8 is on
 
 Returns ARRAY with pictures URL.
+
+=head2 build_tree
+
+ my $res = $obj->build_tree($html);
+
+Build flat html tree and returns 1
+
+=head2 get_tree
+
+ my $res  = $obj->build_tree($html);
+ my $tree = $obj->get_tree(1);
+
+Returns ARRAY with flat html tree
+
+=head2 get_tree_by_element_id
+
+ my $element_tree = $obj->get_tree_by_element_id($element->{id}, 1);
+
+Returns ARRAY with flat html tree by element id
+
+=head2 get_element_by_name
+
+ my $element = $obj->get_element_by_name("div", 0);
+
+Returns HASH or undef with element by tag name.
+ARGS:
+1) tag name
+2) offset
+
+Structure of this element:
+
+ $element = {
+	id     => <number>,
+	name   => <text>,
+	tag_id => <number>,
+	prop   => <HASH>,
+	level  => <number>,
+	start  => <number>,
+	stop   => <number>,
+	bstart => <number>,
+	bstop  => <number>
+ };
+
+=head2 get_stat_by_element_id
+
+ my $element = $obj->get_stat_by_element_id($element->{id});
+
+Returns HASH with element stats by element id. HASH included: count, all, words, AI_TEXT, AI_LINK, AI_IMG, all_AI_LINK, all_AI_LINK, all_AI_IMG
+
+=head2 get_child
+
+ my $element = $obj->get_child(0);
+
+=head2 get_parent
+
+ my $element = $obj->get_parent();
+
+=head2 get_curr_element
+
+ my $element = $obj->get_curr_element();
+
+=head2 get_prev_element
+
+ my $element = $obj->get_prev_element();
+
+=head2 get_next_element_curr_level
+
+ my $element = $obj->get_next_element_curr_level();
+
+=head2 get_prev_element_curr_level
+
+ my $element = $obj->get_prev_element_curr_level();
+
+=head2 set_position
+
+ my $element = $obj->set_position($element);
+
+Set position by element. Returns this element or undef if something is wrong
 
 =head1 DESTROY
 

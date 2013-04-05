@@ -1,6 +1,9 @@
 //
-//  Created by Alexander Borisov on 10.01.13.
-//  Copyright (c) 2013 Alexander Borisov. All rights reserved.
+//  libextractor.h
+//  QNail::HTML
+//
+//  Created by Alexander Borisov on 18.12.12.
+//  Copyright (c) 2012 Alexander Borisov. All rights reserved.
 //
 
 #include <stdio.h>
@@ -9,6 +12,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <memory.h>
+
 #define TYPE_TAG_IS_OPEN   100
 #define TYPE_TAG_IS_CLOSE  200
 #define TYPE_TAG_IS_SIMPLE 1
@@ -290,5 +294,5 @@ void clean_tree_entity(struct tree_entity *);
 struct tree_entity * check_entity(struct tree_entity *, char *);
 void add_entity(struct tree_entity *, char *, char *);
 
+int get_count_to_next_element_in_level(struct tree_list *, struct html_tree *);
 
-typedef struct tree_list htmltag_t;
