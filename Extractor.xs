@@ -467,7 +467,8 @@ struct html_tree * check_html(struct tree_list *my_r, struct max_element *max) {
         }
     }
     
-    if((count_words > 0 && count_link > 0 && ((count_words / count_link) > 1) && max->count_words < count_words) || (max->count_words < count_words && count_link == 0)) {
+    if((count_words > 0 && count_link > 0 && ((count_words / count_link) > 1) && max->count_words < count_words) || (max->count_words < count_words && count_link == 0))
+    {
         max->count_words = count_words;
         max->element = get_curr_element(my_r);
     }
@@ -491,6 +492,51 @@ struct html_tree * check_html(struct tree_list *my_r, struct max_element *max) {
     return max->element;
 }
 
+void check_html_with_all_text(struct tree_list *my_r, struct max_element_list *max_list) {
+    struct html_tree * tag;
+    long i = -1;
+    long count_words = 0, count_link = 0;
+    int element_id_form = get_tag_id(my_r->tags, "form");
+    
+    struct html_tree *curr_element = get_curr_element(my_r);
+    
+    while((tag = get_child_n(my_r, ++i))) {
+        count_link += tag->counts[AI_LINK];
+        
+        if(my_r->tags->ai[ tag->tag_id ] == AI_TEXT) {
+            count_words += tag->count_word;
+        }
+    }
+    
+    if((count_words > 0 && count_link > 0 && ((count_words / count_link) > 1)) || (count_words && count_link == 0))
+    {
+        max_list->lelements++;
+        if(max_list->lelements >= max_list->lelements_size){
+            max_list->lelements_size += 1024;
+            max_list->elements = realloc(max_list->elements, max_list->lelements_size);
+        }
+        
+        max_list->elements[max_list->lelements].element = curr_element;
+        max_list->elements[max_list->lelements].count_words = count_words;
+    }
+    
+    i = -1;
+    while((tag = get_child_n(my_r, ++i))) {
+        if(my_r->tags->ai[ tag->tag_id ] == AI_LINK) {
+            continue;
+        }
+        
+        // skip form
+        if(tag->tag_id == element_id_form || my_r->tags->type[tag->tag_id] == TYPE_TAG_SIMPLE) {
+            continue;
+        }
+        
+        set_position(my_r, tag);
+        check_html_with_all_text(my_r, max_list);
+        set_position(my_r, curr_element);
+    }
+}
+
 int init_tags(struct tags *tags) {
     if(tags->csize > -1)
         return -1;
@@ -499,7 +545,7 @@ int init_tags(struct tags *tags) {
     
     tags->name     = (char **)malloc(sizeof(char *) * tags->csize);
     
-    tags->preority = (int *)malloc(sizeof(int) * tags->csize);
+    tags->priority = (int *)malloc(sizeof(int) * tags->csize);
     tags->type     = (int *)malloc(sizeof(int) * tags->csize);
     tags->extra    = (int *)malloc(sizeof(int) * tags->csize);
     tags->ai       = (int *)malloc(sizeof(int) * tags->csize);
@@ -581,8 +627,8 @@ int init_tags(struct tags *tags) {
     
     // ++ dl ++
     add_tag_R(tags, "dl", 2, 20, 0, TYPE_TAG_BLOCK, 0, OPTION_NULL, AI_NULL);
-    add_tag_R(tags, "dt", 2, 19, 0, TYPE_TAG_BLOCK, EXTRA_TAG_CLOSE_PREORITY_FAMILY, OPTION_NULL, AI_NULL);
-    add_tag_R(tags, "dd", 2, 19, 0, TYPE_TAG_BLOCK, EXTRA_TAG_CLOSE_PREORITY_FAMILY, OPTION_NULL, AI_NULL);
+    add_tag_R(tags, "dt", 2, 19, 0, TYPE_TAG_BLOCK, EXTRA_TAG_CLOSE_PRIORITY_FAMILY, OPTION_NULL, AI_NULL);
+    add_tag_R(tags, "dd", 2, 19, 0, TYPE_TAG_BLOCK, EXTRA_TAG_CLOSE_PRIORITY_FAMILY, OPTION_NULL, AI_NULL);
     // -- dl --
     
     add_tag_R(tags, "em", 2, 0, 0, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_NULL);
@@ -607,9 +653,9 @@ int init_tags(struct tags *tags) {
         // -- form: fieldset --
         
         // ++ form: select ++
-        add_tag_R(tags, "select", 6, 20, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PREORITY, OPTION_CLEAN_TAGS, AI_NULL);
-        add_tag_R(tags, "optgroup", 8, 19, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PREORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
-        add_tag_R(tags, "option", 6, 18, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PREORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
+        add_tag_R(tags, "select", 6, 20, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS, AI_NULL);
+        add_tag_R(tags, "optgroup", 8, 19, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
+        add_tag_R(tags, "option", 6, 18, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
         // -- form: select --
     
     add_tag_R(tags, "input", 5, 0, 0, TYPE_TAG_ONE, 0, OPTION_NULL, AI_NULL);
@@ -701,8 +747,8 @@ int init_tags(struct tags *tags) {
     
     // ++ ruby ++
     add_tag_R(tags, "ruby", 4, 20, FAMILY_RUBY, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_NULL);
-    add_tag_R(tags, "rt", 2, 19, FAMILY_RUBY, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PREORITY_FAMILY, OPTION_NULL, AI_NULL);
-    add_tag_R(tags, "rp", 2, 19, FAMILY_RUBY, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PREORITY_FAMILY, OPTION_NULL, AI_NULL);
+    add_tag_R(tags, "rt", 2, 19, FAMILY_RUBY, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY_FAMILY, OPTION_NULL, AI_NULL);
+    add_tag_R(tags, "rp", 2, 19, FAMILY_RUBY, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY_FAMILY, OPTION_NULL, AI_NULL);
     // -- ruby --
     
     add_tag_R(tags, "s", 1, 0, 0, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_TEXT);
@@ -745,7 +791,7 @@ int init_tags(struct tags *tags) {
     
     // ++ ul ++
     add_tag_R(tags, "ul", 2, 20, FAMILY_LIST, TYPE_TAG_BLOCK, 0, OPTION_NULL, AI_NULL);
-    add_tag_R(tags, "li", 2, 19, FAMILY_LIST, TYPE_TAG_BLOCK, EXTRA_TAG_CLOSE_PREORITY_FAMILY, OPTION_NULL, AI_NULL);
+    add_tag_R(tags, "li", 2, 19, FAMILY_LIST, TYPE_TAG_BLOCK, EXTRA_TAG_CLOSE_PRIORITY_FAMILY, OPTION_NULL, AI_TEXT);
     //add_tag_R(tags, "li", 2, 0, 0, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_IF_SELF, OPTION_NULL, AI_NULL); -- orig
     // -- ul --
     
@@ -789,14 +835,14 @@ int check_open_tag (struct tree_list *my_r, struct elements *tree_curr, long ti,
     }
     
     if(
-            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PREORITY_FAMILY &&
+            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
             tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_BLOCK
     ){
         long ir;
         for(ir = ti - 1; ir >= 1; ir--) {
             if(
                 tags->family[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] == tags->family[ tag_id ] &&
-                tags->preority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->preority[ tag_id ]
+                tags->priority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->priority[ tag_id ]
             ){
                 return 1;
             }
@@ -804,22 +850,22 @@ int check_open_tag (struct tree_list *my_r, struct elements *tree_curr, long ti,
     }
     
     if(
-            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PREORITY_FAMILY &&
+            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
             tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
-            tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->preority[tag_id]
+            tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->priority[tag_id]
     ){
         return 2;
     }
     else if(
-            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PREORITY_FAMILY &&
+            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
             tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
-            tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->preority[tag_id]
+            tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->priority[tag_id]
     ){
         long ir;
         for(ir = ti - 1; ir >= 1; ir--) {
             if(
                     tags->family[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] == tags->family[ tag_id ] &&
-                    tags->preority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->preority[ tag_id ]
+                    tags->priority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->priority[ tag_id ]
             ){
                 return 1;
             }
@@ -848,18 +894,18 @@ int check_open_tag (struct tree_list *my_r, struct elements *tree_curr, long ti,
             tree_curr->tree[ tree_curr->index[ti] ].tag_id == tag_id
        ) ||
        (
-            tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_PREORITY &&
+            tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_PRIORITY &&
             tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
-            tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] <= tags->preority[tag_id]
-        //EXTRA_TAG_CLOSE_PREORITY
+            tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] <= tags->priority[tag_id]
+        //EXTRA_TAG_CLOSE_PRIORITY
        )
     ) {
         return 1;
     }
     else if(
                 tags->type[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == TYPE_TAG_BLOCK &&
-                tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] != 0 && tags->preority[tag_id] != 0 &&
-                tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] >= tags->preority[tag_id]
+                tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] != 0 && tags->priority[tag_id] != 0 &&
+                tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] >= tags->priority[tag_id]
     ){
         return 2;
     }
@@ -1144,7 +1190,7 @@ int close_all_element_by_tag_id(struct mem_tag *my, struct elements *tree_curr, 
             continue;
         }
         
-        if(tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->preority[ tag_id ]) {
+        if(tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->priority[ tag_id ]) {
             break;
         }
         
@@ -1353,20 +1399,22 @@ void html_tree(struct tree_list *my_r)
            )
         )
         {
-            is_open_key = 0;
-            
             if(is_comment != 0) {
                 if(is_comment == 1 && html[i-2] == '-' && html[i-3] == '-') {
                     is_comment = 0;
+                    is_open_key = 0;
                     pos = 0;
                 }
                 else if(is_comment == 2) {
                     is_comment = 0;
+                    is_open_key = 0;
                     pos = 0;
                 }
                 
                 continue;
             }
+            
+            is_open_key = 0;
             
             if(my_buff == -1)
                 continue;
@@ -1402,7 +1450,7 @@ void html_tree(struct tree_list *my_r)
                     // проверяем открывался ли вообще пришедший тег
                     int ti; int is_open = 0;
                     for(ti = tree_curr->lindex; ti >= 1; ti--) {
-                        if(tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->preority[tag_id]){
+                        if(tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->priority[tag_id]){
                             break;
                         }
                         
@@ -1463,7 +1511,7 @@ void html_tree(struct tree_list *my_r)
                                 }
                                 
                                 // проверка на приоритет тегов
-                                if(tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->preority[tag_id]){
+                                if(tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->priority[tag_id]){
                                     break;
                                 }
                                 else
@@ -1487,7 +1535,7 @@ void html_tree(struct tree_list *my_r)
                                     tree_curr->tree[ tree_curr->index[ti] ].tag_stop = i - 1;
                                 }
                                 
-                                if(tags->preority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] <= tags->preority[tag_id]) {
+                                if(tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] <= tags->priority[tag_id]) {
                                     tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop = my[ my_buff ].start_otag - 2;
                                     tree_curr->tree[ tree_curr->index[ti] ].tag_stop = i - 1;
                                 }
@@ -2087,7 +2135,7 @@ void html_tree(struct tree_list *my_r)
                     if(text_position == -1)
                         text_position = i - 1;
                     
-                    if(nc != ' ' && nc != '\n' && nc != '\t' && (tree_curr->tree[ tree_curr->ltree ].tag_id != DEFAULT_TAG_ID ||
+                    if(nc != ' ' && (nc < '\x09' || nc > '\x0D') && (tree_curr->tree[ tree_curr->ltree ].tag_id != DEFAULT_TAG_ID ||
                         (tree_curr->tree[ tree_curr->ltree ].tag_id == DEFAULT_TAG_ID && tree_curr->tree[ tree_curr->ltree ].tag_body_stop != -1)
                     )) {
                         int inc_offset = 0;
@@ -2225,7 +2273,7 @@ void html_tree(struct tree_list *my_r)
                         my[my_buff].params[my[my_buff].lparams].key = (char *)realloc(my[my_buff].params[my[my_buff].lparams].key, my[my_buff].params[my[my_buff].lparams].lkey_size * sizeof(char));
                     }
                     
-                    my[my_buff].params[my[my_buff].lparams].key[ my[my_buff].params[my[my_buff].lparams].lkey++ ] = nc;
+                    my[my_buff].params[my[my_buff].lparams].key[ my[my_buff].params[my[my_buff].lparams].lkey++ ] = tolower(nc);
                     break;
                 }
                 else if(next_tag == my[my_buff].lparams && my[my_buff].params[my[my_buff].lparams].lkey != 0) {
@@ -2291,7 +2339,7 @@ void html_tree(struct tree_list *my_r)
                         next_tag++;
                         break;
                     } else {
-                        my[my_buff].params[my[my_buff].lparams].value[my[my_buff].params[my[my_buff].lparams].lvalue++] = tolower(nc);
+                        my[my_buff].params[my[my_buff].lparams].value[my[my_buff].params[my[my_buff].lparams].lvalue++] = nc;
                     }
                     
                     if(nc == '\\') {
@@ -2412,7 +2460,7 @@ int check_tags_alloc(struct tags *tags) {
         tags->csize += 1024;
         
         tags->name     = (char **)realloc(tags->name, sizeof(char*) * tags->csize);
-        tags->preority = (int *)realloc(tags->preority, sizeof(int) * tags->csize);
+        tags->priority = (int *)realloc(tags->priority, sizeof(int) * tags->csize);
         tags->type     = (int *)realloc(tags->type, sizeof(int) * tags->csize);
         tags->extra    = (int *)realloc(tags->extra, sizeof(int) * tags->csize);
         tags->ai       = (int *)realloc(tags->ai, sizeof(int) * tags->csize);
@@ -2452,7 +2500,7 @@ int add_tag(struct tags *tags, char *html, struct mem_tag *my) {
     }
     tags->name[ tags->count ][t]  = '\0';
     
-    tags->preority[ tags->count ] = 0;
+    tags->priority[ tags->count ] = 0;
     tags->type[ tags->count ]     = TYPE_TAG_NORMAL;
     tags->extra[ tags->count ]    = 0;
     tags->ai[ tags->count ]       = AI_NULL;
@@ -2462,7 +2510,7 @@ int add_tag(struct tags *tags, char *html, struct mem_tag *my) {
     return tags->count;
 }
 
-int add_tag_R(struct tags *tags, char *tagname, size_t size, int preority, int family, int type, int extra, int option, int ai) {
+int add_tag_R(struct tags *tags, char *tagname, size_t size, int priority, int family, int type, int extra, int option, int ai) {
     tags->count++;
     
     check_tags_alloc(tags);
@@ -2478,7 +2526,7 @@ int add_tag_R(struct tags *tags, char *tagname, size_t size, int preority, int f
         tags->name[ tags->count ][i] = tolower(tagname[i]);
     }
     
-    tags->preority[ tags->count ] = preority;
+    tags->priority[ tags->count ] = priority;
     tags->type[ tags->count ]     = type;
     tags->extra[ tags->count ]    = extra;
     tags->ai[ tags->count ]       = ai;
@@ -2486,6 +2534,48 @@ int add_tag_R(struct tags *tags, char *tagname, size_t size, int preority, int f
     tags->option[ tags->count ]   = option;
     
     return tags->count;
+}
+
+int set_tag_family(struct tags *tags, char *tagname, int value) {
+    int tag_id = get_tag_id(tags, tagname);
+    if(tag_id > -1)
+        tags->family[tag_id] = value;
+    return tag_id;
+}
+
+int set_tag_extra(struct tags *tags, char *tagname, int value) {
+    int tag_id = get_tag_id(tags, tagname);
+    if(tag_id > -1)
+        tags->extra[tag_id] = value;
+    return tag_id;
+}
+
+int set_tag_option(struct tags *tags, char *tagname, int value) {
+    int tag_id = get_tag_id(tags, tagname);
+    if(tag_id > -1)
+        tags->option[tag_id] = value;
+    return tag_id;
+}
+
+int set_tag_priority(struct tags *tags, char *tagname, int value) {
+    int tag_id = get_tag_id(tags, tagname);
+    if(tag_id > -1)
+        tags->priority[tag_id] = value;
+    return tag_id;
+}
+
+int set_tag_type(struct tags *tags, char *tagname, int value) {
+    int tag_id = get_tag_id(tags, tagname);
+    if(tag_id > -1)
+        tags->type[tag_id] = value;
+    return tag_id;
+}
+
+int set_tag_ai(struct tags *tags, char *tagname, int value) {
+    int tag_id = get_tag_id(tags, tagname);
+    if(tag_id > -1)
+        tags->ai[tag_id] = value;
+    return tag_id;
 }
 
 // +++++++++++
@@ -2630,6 +2720,43 @@ struct html_tree * get_element_by_name_in_child(struct tree_list *my_r, char *ta
     if(level == -1)
         return NULL;
     return &my_r->list[level];
+}
+
+struct html_tree * get_element_by_name_in_level(struct tree_list *my_r, char *tagname, long position) {
+    int tag_id = get_tag_id(my_r->tags, tagname);
+    
+    if(tag_id == -1 || my_r->tags->index.tag_count[tag_id] == -1 || position < 0 || my_r->tags->index.tag_count[tag_id] < position)
+        return NULL;
+    
+    struct html_tree * curr_element = get_curr_element(my_r);
+    
+    long i; long cpos = -1; long il = 0;
+    int i_level = my_r->list[ my_r->cur_pos ].inc + 1;
+    
+    long max_id = -1;
+    struct html_tree * max_element = get_next_element_skip_curr(my_r);
+    
+    if(max_element != NULL) {
+        max_id = max_element->id;
+        set_position(my_r, curr_element);
+    }
+    
+    for(i = 0; i <= my_r->tags->index.tag_count[tag_id]; i++) {
+        if(my_r->cur_pos < my_r->tags->index.tag_id[tag_id][i] &&
+           i_level == my_r->list[ my_r->tags->index.tag_id[tag_id][i] ].inc &&
+           (max_id == -1 || (max_id > my_r->tags->index.tag_id[tag_id][i]))
+        ) {
+            if(il == position) {
+                cpos = i;
+                break;
+            }
+            il++;
+        }
+    }
+    
+    if(cpos == -1)
+        return NULL;
+    return &my_r->list[ my_r->tags->index.tag_id[tag_id][cpos] ];
 }
 
 int get_count_element_by_name(struct tree_list *my_r, char *tagname) {
@@ -2951,7 +3078,7 @@ void clean_tree(struct tree_list * my_r) {
         free(my_r->tags->index.tag_csize);
         free(my_r->tags->index.tag_id);
         free(my_r->tags->name);
-        free(my_r->tags->preority);
+        free(my_r->tags->priority);
         free(my_r->tags->type);
         free(my_r->tags->extra);
         free(my_r->tags->ai);
@@ -2959,7 +3086,7 @@ void clean_tree(struct tree_list * my_r) {
         free(my_r->tags->option);
         
         my_r->tags->name     = NULL;
-        my_r->tags->preority = NULL;
+        my_r->tags->priority = NULL;
         my_r->tags->type     = NULL;
         my_r->tags->extra    = NULL;
         my_r->tags->ai       = NULL;
@@ -3343,7 +3470,7 @@ void clean_tree_entity(struct tree_entity *entities) {
 
 
 
-HV * get_element_property_by_id(htmltag_t *my_r, long id) {
+HV * get_element_property_by_id(htmltag_t *my_r, long id, int is_utf8) {
     long my_id = my_r->list[id].my_id;
     
     SV **ha;
@@ -3356,7 +3483,12 @@ HV * get_element_property_by_id(htmltag_t *my_r, long id) {
         long si;
         for(si = 0; si <= my_r->my[my_id].lparams; si++) {
             if(my_r->my[my_id].params[si].lvalue > 0) {
-                ha = hv_store(hash_prop, my_r->my[my_id].params[si].key, my_r->my[my_id].params[si].lkey - 1, newSVpv(my_r->my[my_id].params[si].value, my_r->my[my_id].params[si].lvalue - 1), 0);
+                SV *nm = newSVpv(my_r->my[my_id].params[si].value, my_r->my[my_id].params[si].lvalue - 1);
+                
+                if(is_utf8) {
+                   SvUTF8_on(nm);
+                }
+                ha = hv_store(hash_prop, my_r->my[my_id].params[si].key, my_r->my[my_id].params[si].lkey - 1, nm, 0);
             } else {
                 ha = hv_store(hash_prop, my_r->my[my_id].params[si].key, my_r->my[my_id].params[si].lkey - 1, &PL_sv_undef, 0);
             }
@@ -3658,7 +3790,7 @@ get_tree(my_r, inc_words_tag = 1)
                 continue;
             }
             
-            av_push(array, newRV_noinc((SV*)get_element_property_by_id(my_r, mi)));
+            av_push(array, newRV_noinc((SV*)get_element_property_by_id(my_r, mi, inc_words_tag)));
         }
         
         RETVAL = newRV_noinc((SV*)array);
@@ -3695,7 +3827,7 @@ get_tree_by_element_id(my_r, id, inc_words_tag = 1)
                     continue;
                 }
                 
-                av_push(array, newRV_noinc((SV*)get_element_property_by_id(my_r, mi)));
+                av_push(array, newRV_noinc((SV*)get_element_property_by_id(my_r, mi, 1)));
             }
             
             RETVAL = newRV_noinc((SV*)array);
@@ -3703,6 +3835,43 @@ get_tree_by_element_id(my_r, id, inc_words_tag = 1)
         
     OUTPUT:
         RETVAL
+
+SV*
+get_element_by_name_in_child(my_r, name, pos = 0)
+    HTML::Content::Extractor my_r;
+    char *name;
+    long pos;
+    
+    CODE:
+        struct html_tree *element = get_element_by_name_in_child(my_r, name, pos);
+        if(element != NULL) {
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
+        }
+        else {
+            RETVAL = &PL_sv_undef;
+        }
+        
+    OUTPUT:
+        RETVAL
+
+SV*
+get_element_by_name_in_level(my_r, name, pos = 0)
+    HTML::Content::Extractor my_r;
+    char *name;
+    long pos;
+    
+    CODE:
+        struct html_tree *element = get_element_by_name_in_level(my_r, name, pos);
+        if(element != NULL) {
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
+        }
+        else {
+            RETVAL = &PL_sv_undef;
+        }
+        
+    OUTPUT:
+        RETVAL
+
 
 SV*
 get_element_by_name(my_r, name, pos = 0)
@@ -3713,7 +3882,7 @@ get_element_by_name(my_r, name, pos = 0)
     CODE:
         struct html_tree *element = get_element_by_name(my_r, name, pos);
         if(element != NULL) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3721,7 +3890,7 @@ get_element_by_name(my_r, name, pos = 0)
         
     OUTPUT:
         RETVAL
-    
+
 SV*
 get_stat_by_element_id(my_r, id)
     HTML::Content::Extractor my_r;
@@ -3748,6 +3917,29 @@ get_stat_by_element_id(my_r, id)
         RETVAL
 
 SV*
+get_tag_info_by_name(my_r, tag_name)
+    HTML::Content::Extractor my_r;
+    char *tag_name;
+    
+    CODE:
+        SV **ha;
+        HV *hash = newHV();
+        
+        int tag_id = get_tag_id(my_r->tags, tag_name);
+        
+        ha = hv_store(hash, "priority", 8, newSViv(my_r->tags->priority[tag_id]), 0);
+        ha = hv_store(hash, "type", 4, newSViv(my_r->tags->type[tag_id]), 0);
+        ha = hv_store(hash, "extra", 5, newSViv(my_r->tags->extra[tag_id]), 0);
+        ha = hv_store(hash, "ai", 2, newSViv(my_r->tags->ai[tag_id]), 0);
+        ha = hv_store(hash, "family", 6, newSViv(my_r->tags->family[tag_id]), 0);
+        ha = hv_store(hash, "option" , 6, newSViv(my_r->tags->option[tag_id]) , 0);
+        
+        RETVAL = newRV_noinc((SV*)hash);
+    OUTPUT:
+        RETVAL
+
+
+SV*
 get_child(my_r, pos)
     HTML::Content::Extractor my_r;
     long pos;
@@ -3755,7 +3947,7 @@ get_child(my_r, pos)
     CODE:
         struct html_tree *element = get_child(my_r, pos);
         if(element != NULL) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3771,7 +3963,7 @@ get_parent(my_r)
     CODE:
         struct html_tree *element = get_parent(my_r);
         if(element != NULL) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3787,7 +3979,7 @@ get_curr_element(my_r)
     CODE:
         struct html_tree *element = get_curr_element(my_r);
         if(element != NULL) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3803,7 +3995,7 @@ get_prev_element(my_r)
     CODE:
         struct html_tree *element = get_prev_element(my_r);
         if(element != NULL) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3819,7 +4011,7 @@ get_next_element_curr_level(my_r)
     CODE:
         struct html_tree *element = get_next_element_curr_level(my_r);
         if(element != NULL) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3835,7 +4027,7 @@ get_prev_element_curr_level(my_r)
     CODE:
         struct html_tree *element = get_prev_element_curr_level(my_r);
         if(element != NULL) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, element->id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3855,7 +4047,7 @@ set_position(my_r, hashref)
         int el_id = SvNV(*svp);
         
         if(set_position(my_r, &my_r->list[el_id]) != -1) {
-            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, el_id));
+            RETVAL = newRV_noinc((SV*)get_element_property_by_id(my_r, el_id, 1));
         }
         else {
             RETVAL = &PL_sv_undef;
@@ -3863,6 +4055,334 @@ set_position(my_r, hashref)
         
     OUTPUT:
         RETVAL
+
+SV*
+check_html_with_all_text(my_r)
+    HTML::Content::Extractor my_r;
+    
+    CODE:
+        struct max_element_list max_list = {-1, 1024};
+        max_list.elements = (struct max_element *)malloc(sizeof(struct max_element) * max_list.lelements_size);
+        
+        check_html_with_all_text(my_r, &max_list);
+        
+        AV* array = newAV();
+        SV **ha;
+        
+        long i;
+        for (i = 0; i <= max_list.lelements; i++) {
+            set_position(my_r, max_list.elements[i].element);
+            
+            struct lbuffer main_buff = {-1, 1024 * 1024, NULL};
+            get_text_without_element(my_r, &main_buff);
+            clean_text(my_r->entities, &main_buff);
+            
+            HV *hash = newHV();
+            
+            ha = hv_store(hash, "text", 4, newSVpv(main_buff.buff, 0), 0);
+            ha = hv_store(hash, "element", 7, newRV_noinc((SV*)get_element_property_by_id(my_r, max_list.elements[i].element->id, 1)), 0);
+            
+            av_push(array, newRV_noinc((SV*)hash));
+            
+            free(main_buff.buff);
+        }
+        
+        free(max_list.elements);
+        
+        RETVAL = newRV_noinc((SV*)array);
+        
+    OUTPUT:
+        RETVAL
+
+SV*
+set_tag_ai(my_r, tagname, value)
+    HTML::Content::Extractor my_r;
+    char *tagname;
+    int value;
+    
+    CODE:
+        RETVAL = newSViv( set_tag_ai(my_r->tags, tagname, value) );
+    OUTPUT:
+        RETVAL
+
+SV*
+set_tag_type(my_r, tagname, value)
+    HTML::Content::Extractor my_r;
+    char *tagname;
+    int value;
+    
+    CODE:
+        RETVAL = newSViv( set_tag_type(my_r->tags, tagname, value) );
+    OUTPUT:
+        RETVAL
+
+SV*
+set_tag_extra(my_r, tagname, value)
+    HTML::Content::Extractor my_r;
+    char *tagname;
+    int value;
+    
+    CODE:
+        RETVAL = newSViv( set_tag_extra(my_r->tags, tagname, value) );
+    OUTPUT:
+        RETVAL
+
+SV*
+set_tag_family(my_r, tagname, value)
+    HTML::Content::Extractor my_r;
+    char *tagname;
+    int value;
+    
+    CODE:
+        RETVAL = newSViv( set_tag_family(my_r->tags, tagname, value) );
+    OUTPUT:
+        RETVAL
+
+SV*
+set_tag_option(my_r, tagname, value)
+    HTML::Content::Extractor my_r;
+    char *tagname;
+    int value;
+    
+    CODE:
+        RETVAL = newSViv( set_tag_option(my_r->tags, tagname, value) );
+    OUTPUT:
+        RETVAL
+
+SV*
+set_tag_priority(my_r, tagname, value)
+    HTML::Content::Extractor my_r;
+    char *tagname;
+    int value;
+    
+    CODE:
+        RETVAL = newSViv( set_tag_priority(my_r->tags, tagname, value) );
+    OUTPUT:
+        RETVAL
+
+
+SV*
+AI_NULL()
+    CODE:
+        RETVAL = newSViv(AI_NULL);
+    OUTPUT:
+        RETVAL
+
+SV*
+AI_TEXT()
+    CODE:
+        RETVAL = newSViv(AI_TEXT);
+    OUTPUT:
+        RETVAL
+
+SV*
+AI_LINK()
+    CODE:
+        RETVAL = newSViv(AI_LINK);
+    OUTPUT:
+        RETVAL
+
+SV*
+AI_IMG()
+    CODE:
+        RETVAL = newSViv(AI_IMG);
+    OUTPUT:
+        RETVAL
+
+
+SV*
+TYPE_TAG_NORMAL()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_NORMAL);
+    OUTPUT:
+        RETVAL
+
+SV*
+TYPE_TAG_BLOCK()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_BLOCK);
+    OUTPUT:
+        RETVAL
+
+SV*
+TYPE_TAG_INLINE()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_INLINE);
+    OUTPUT:
+        RETVAL
+
+SV*
+TYPE_TAG_SIMPLE()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_SIMPLE);
+    OUTPUT:
+        RETVAL
+
+SV*
+TYPE_TAG_SIMPLE_TREE()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_SIMPLE_TREE);
+    OUTPUT:
+        RETVAL
+
+SV*
+TYPE_TAG_ONE()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_ONE);
+    OUTPUT:
+        RETVAL
+
+SV*
+TYPE_TAG_TEXT()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_TEXT);
+    OUTPUT:
+        RETVAL
+
+SV*
+TYPE_TAG_SYS()
+    CODE:
+        RETVAL = newSViv(TYPE_TAG_SYS);
+    OUTPUT:
+        RETVAL
+
+
+SV*
+DEFAULT_TAG_ID()
+    CODE:
+        RETVAL = newSViv(DEFAULT_TAG_ID);
+    OUTPUT:
+        RETVAL
+
+
+SV*
+EXTRA_TAG_CLOSE_IF_BLOCK()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_CLOSE_IF_BLOCK);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_CLOSE_IF_SELF()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_CLOSE_IF_SELF);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_CLOSE_IF_SELF_FAMILY()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_CLOSE_IF_SELF_FAMILY);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_CLOSE_NOW()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_CLOSE_NOW);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_SIMPLE()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_SIMPLE);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_SIMPLE_TREE()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_SIMPLE_TREE);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_CLOSE_PRIORITY()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_CLOSE_PRIORITY);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_CLOSE_FAMILY_LIST()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_CLOSE_FAMILY_LIST);
+    OUTPUT:
+        RETVAL
+
+SV*
+EXTRA_TAG_CLOSE_PRIORITY_FAMILY()
+    CODE:
+        RETVAL = newSViv(EXTRA_TAG_CLOSE_PRIORITY_FAMILY);
+    OUTPUT:
+        RETVAL
+
+
+SV*
+FAMILY_H()
+    CODE:
+        RETVAL = newSViv(FAMILY_H);
+    OUTPUT:
+        RETVAL
+
+SV*
+FAMILY_TABLE()
+    CODE:
+        RETVAL = newSViv(FAMILY_TABLE);
+    OUTPUT:
+        RETVAL
+
+SV*
+FAMILY_LIST()
+    CODE:
+        RETVAL = newSViv(FAMILY_LIST);
+    OUTPUT:
+        RETVAL
+
+SV*
+FAMILY_RUBY()
+    CODE:
+        RETVAL = newSViv(FAMILY_RUBY);
+    OUTPUT:
+        RETVAL
+
+SV*
+FAMILY_SELECT()
+    CODE:
+        RETVAL = newSViv(FAMILY_SELECT);
+    OUTPUT:
+        RETVAL
+
+SV*
+FAMILY_HTML()
+    CODE:
+        RETVAL = newSViv(FAMILY_HTML);
+    OUTPUT:
+        RETVAL
+
+
+SV*
+OPTION_NULL()
+    CODE:
+        RETVAL = newSViv(OPTION_NULL);
+    OUTPUT:
+        RETVAL
+
+SV*
+OPTION_CLEAN_TAGS()
+    CODE:
+        RETVAL = newSViv(OPTION_CLEAN_TAGS);
+    OUTPUT:
+        RETVAL
+
+SV*
+OPTION_CLEAN_TAGS_SAVE()
+    CODE:
+        RETVAL = newSViv(OPTION_CLEAN_TAGS_SAVE);
+    OUTPUT:
+        RETVAL
+
 
 void
 DESTROY(my_r)

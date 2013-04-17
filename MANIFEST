@@ -19,7 +19,4 @@ t/008_main_text.t	Get main text from HTML
 t/009_main_images.t	Get main images from HTML
 t/010_raw_text.t	Get raw text from HTML
 t/011_main_text_with_elements.t Get text with elements from HTML
-libextractor/libextractor.c     C lib files
-libextractor/libextractor.h     C lib files
-libextractor/Makefile           C lib files
 META.json                                Module JSON meta-data (added by MakeMaker)

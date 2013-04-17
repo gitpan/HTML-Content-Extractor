@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <memory.h>
+
 #define TYPE_TAG_IS_OPEN   100
 #define TYPE_TAG_IS_CLOSE  200
 #define TYPE_TAG_IS_SIMPLE 1
@@ -32,9 +33,9 @@
 #define EXTRA_TAG_CLOSE_NOW  4
 #define EXTRA_TAG_SIMPLE  5
 #define EXTRA_TAG_SIMPLE_TREE 6
-#define EXTRA_TAG_CLOSE_PREORITY 7
+#define EXTRA_TAG_CLOSE_PRIORITY 7
 #define EXTRA_TAG_CLOSE_FAMILY_LIST 8
-#define EXTRA_TAG_CLOSE_PREORITY_FAMILY 9
+#define EXTRA_TAG_CLOSE_PRIORITY_FAMILY 9
 
 #define FAMILY_H     1
 #define FAMILY_TABLE 2
@@ -93,7 +94,7 @@ struct tags {
     int count;
     int csize;
     char **name;
-    int *preority;
+    int *priority;
     int *type;
     int *extra;
     int *ai;
@@ -140,6 +141,12 @@ struct tree_list {
 struct max_element {
     long count_words;
     struct html_tree *element;
+};
+
+struct max_element_list {
+    long lelements;
+    long lelements_size;
+    struct max_element *elements;
 };
 
 struct lbuffer {
@@ -200,6 +207,13 @@ typedef struct tree_list my_tree_list;
 int add_tag_R(struct tags *, char *, size_t, int, int, int, int, int, int);
 int add_tag(struct tags *, char *, struct mem_tag *);
 
+int set_tag_ai(struct tags *, char *, int);
+int set_tag_type(struct tags *, char *, int);
+int set_tag_extra(struct tags *, char *, int);
+int set_tag_family(struct tags *, char *, int);
+int set_tag_option(struct tags *, char *, int);
+int set_tag_priority(struct tags *, char *, int);
+
 int init_tags(struct tags *);
 int check_tags_alloc(struct tags *);
 
@@ -245,6 +259,7 @@ struct html_tree * get_prev_element(struct tree_list *);
 struct html_tree * get_element_by_name(struct tree_list *, char *, long);
 // ищет указанный элемент в подчиненных элементах со смещением long
 struct html_tree * get_element_by_name_in_child(struct tree_list *, char *, long);
+struct html_tree * get_element_by_name_in_level(struct tree_list *, char *, long);
 struct html_tree * get_element_by_tag_id(struct tree_list *, int, long);
 
 // отдает количество тегов по имени тега, счет идет с 1
@@ -271,6 +286,7 @@ char * get_element_body(struct tree_list *, struct html_tree *);
 struct mem_params * find_param_by_key_in_element(struct mem_tag *, char *);
 
 struct html_tree * check_html(struct tree_list *, struct max_element *);
+void check_html_with_all_text(struct tree_list *, struct max_element_list *);
 
 void get_raw_text(struct tree_list *, struct lbuffer *);
 void get_text_without_element(struct tree_list *, struct lbuffer *);
@@ -289,6 +305,8 @@ void clean_tree_entity(struct tree_entity *);
 
 struct tree_entity * check_entity(struct tree_entity *, char *);
 void add_entity(struct tree_entity *, char *, char *);
+
+int get_count_to_next_element_in_level(struct tree_list *, struct html_tree *);
 
 
 typedef struct tree_list htmltag_t;
