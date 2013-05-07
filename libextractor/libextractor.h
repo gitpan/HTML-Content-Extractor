@@ -1,6 +1,9 @@
 //
-//  Created by Alexander Borisov on 10.01.13.
-//  Copyright (c) 2013 Alexander Borisov. All rights reserved.
+//  libextractor.h
+//  QNail::HTML
+//
+//  Created by Alexander Borisov on 18.12.12.
+//  Copyright (c) 2012 Alexander Borisov. All rights reserved.
 //
 
 #include <stdio.h>
@@ -310,5 +313,3 @@ void add_entity(struct tree_entity *, char *, char *);
 
 int get_count_to_next_element_in_level(struct tree_list *, struct html_tree *);
 
-
-typedef struct tree_list htmltag_t;

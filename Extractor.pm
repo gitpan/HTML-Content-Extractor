@@ -5,7 +5,7 @@ use strict;
 use vars qw($AUTOLOAD $VERSION $ABSTRACT @ISA @EXPORT);
 
 BEGIN {
-	$VERSION = 0.15;
+	$VERSION = 0.16;
 	$ABSTRACT = "Recieving main text of publication from HTML page and main media content that is bound to the text";
 	
 	@ISA = qw(Exporter DynaLoader);

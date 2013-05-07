@@ -1,3 +1,10 @@
+0.16    2013-05-07
+    Fixed:
+        - signal 11 in large html
+    Add:
+        + C lib files
+
+--------------------------------------------------
 0.15    2013-04-17
     Fixed:
         - ANSI period for DEFAULT_TAG_ID
