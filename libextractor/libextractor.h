@@ -1,9 +1,6 @@
 //
-//  libextractor.h
-//  QNail::HTML
-//
-//  Created by Alexander Borisov on 18.12.12.
-//  Copyright (c) 2012 Alexander Borisov. All rights reserved.
+//  Created by Alexander Borisov on 10.01.13.
+//  Copyright (c) 2013 Alexander Borisov. All rights reserved.
 //
 
 #include <stdio.h>
@@ -66,6 +63,12 @@ struct mem_params {
     char *value;
     int  lvalue;
     int  lvalue_size;
+};
+
+struct mem_stop_words {
+    struct mem_params *mem_params;
+    long lparams;
+    size_t params_size;
 };
 
 struct mem_tag {
@@ -141,6 +144,7 @@ struct tree_list {
     struct tags *tags;
     struct tree_entity *entities;
     struct tags_family *tags_family;
+    struct mem_stop_words *swords;
 };
 
 struct max_element {
@@ -296,7 +300,7 @@ void check_html_with_all_text(struct tree_list *, struct max_element_list *);
 void get_raw_text(struct tree_list *, struct lbuffer *);
 void get_text_without_element(struct tree_list *, struct lbuffer *);
 void get_text_with_element(struct tree_list *, struct lbuffer *, char **, int);
-void get_text_images_href(struct tree_list *, struct mlist *, int);
+struct return_list * get_text_images_href(struct tree_list *, struct return_list *, int, struct mem_stop_words *, int);
 
 void clean_text(struct tree_entity *, struct lbuffer *);
 
@@ -313,3 +317,9 @@ void add_entity(struct tree_entity *, char *, char *);
 
 int get_count_to_next_element_in_level(struct tree_list *, struct html_tree *);
 
+struct mem_stop_words * add_stop_word_params(struct mem_stop_words *, char *, size_t , char *, size_t);
+void * clean_stop_word_params(struct mem_stop_words *);
+int find_stop_word_param(struct mem_stop_words *, struct mem_tag *);
+
+int compare_param_by_nt(struct mem_params *, char *, size_t );
+void * clean_return_list(struct return_list *);

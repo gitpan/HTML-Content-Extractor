@@ -175,7 +175,7 @@ void clean_text(struct tree_entity *entities, struct lbuffer *lbuff) {
                 }
                 
                 break;
-            
+                
             default:
                 M_ADD_TO_NEW_BUFF(lbuff->buff[i]);
                 break;
@@ -224,6 +224,16 @@ void get_text_without_element(struct tree_list *my_r, struct lbuffer *lbuff) {
             
             get_prev_element_in_level(my_r);
             continue;
+        }
+        
+        if(tag->my_id > 0) {
+            if( find_stop_word_param(my_r->swords, &my_r->my[tag->my_id]) ) {
+                if(get_next_element_in_level_skip_curr(my_r) == NULL)
+                    break;
+                
+                get_prev_element_in_level(my_r);
+                continue;
+            }
         }
         
         if(my_r->tags->type[ tag->tag_id ] == TYPE_TAG_BLOCK || my_r->tags->type[ tag->tag_id ] == TYPE_TAG_ONE) {
@@ -278,7 +288,7 @@ void _get_text_with_element_cl(struct tree_list *my_r, struct lbuffer *lbuff, ch
                 if((my_r->tags->name[tag->tag_id][in] == '\0' && elements[is][in] != '\0') ||
                    (my_r->tags->name[tag->tag_id][in] != '\0' && elements[is][in] == '\0') ||
                    my_r->tags->name[tag->tag_id][it] != elements[is][it]
-                ) {
+                   ) {
                     break;
                 }
                 else if(my_r->tags->name[tag->tag_id][in] == '\0' && elements[is][in] == '\0') {
@@ -393,13 +403,18 @@ int _check_img_size(char *str) {
     return rv;
 }
 
-void get_text_images_href(struct tree_list *my_r, struct mlist *buff, int inc) {
+struct return_list * get_text_images_href(struct tree_list *my_r, struct return_list *return_list, int inc, struct mem_stop_words *stop_words, int min_width) {
     struct html_tree * tag = NULL;
     
     long save_nco_pos = my_r->nco_pos;
     
-    if(inc == 0)
-        buff->buff = (char **)malloc(sizeof(char*) * buff->buff_size);
+    if(return_list == NULL) {
+        return_list = (struct return_list *)malloc(sizeof(struct return_list));
+        
+        return_list->count = sizeof(struct return_list) * 1024;
+        return_list->real_count = -1;
+        return_list->list = (struct mem_tag *)malloc(sizeof(struct mem_tag) * return_list->count);
+    }
     
     while ((tag = get_next_element_in_level(my_r))) {
         if(my_r->tags->ai[ tag->tag_id ] == AI_IMG) {
@@ -407,35 +422,16 @@ void get_text_images_href(struct tree_list *my_r, struct mlist *buff, int inc) {
             if(param == NULL)
                 continue;
             
+            if(tag->my_id > 0) {
+                if( find_stop_word_param(stop_words, &my_r->my[tag->my_id]) )
+                    continue;
+            }
+            
             struct mem_params * width = find_param_by_key_in_element(&my_r->my[tag->my_id], "width");
-            if( width == NULL || _check_img_size(width->value) >= 100 ) {
-                long i, m; int is_clone = 0;
-                
-                for (i = 0; i <= buff->i; i++) {
-                    for (m = 0; m <= param->lvalue; m++) {
-                        if(((buff->buff[i][m] == '\0' && param->value[m] != '\0') && (buff->buff[i][m] != '\0' && param->value[m] == '\0')) ||
-                           buff->buff[i][m] != param->value[m]
-                        ) {
-                            break;
-                        }
-                        else if(param->value[m] == '\0' && buff->buff[i][m] == '\0') {
-                            is_clone = 1;
-                            break;
-                        }
-                    }
-                    
-                    if(is_clone == 1)
-                        break;
-                }
-                
-                if(is_clone == 0 && param->lvalue > -1) {
-                    buff->buff[++buff->i] = (char *)malloc(sizeof(char) * param->lvalue + 1);
-                    
-                    int sl = 0;
-                    while (param->lvalue >= sl) {
-                        buff->buff[buff->i][sl] = param->value[sl];
-                        sl++;
-                    }
+            if( width == NULL || min_width == 0 || (min_width > 0 && _check_img_size(width->value) >= min_width) ) {
+                if(param->lvalue > -1) {
+                    return_list->real_count++;
+                    return_list->list[ return_list->real_count ] = my_r->my[tag->my_id];
                 }
             }
         }
@@ -444,44 +440,110 @@ void get_text_images_href(struct tree_list *my_r, struct mlist *buff, int inc) {
     if(inc < 1) {
         struct html_tree *curr_pos = get_curr_element(my_r);
         get_prev_element_curr_level(my_r);
-        get_text_images_href(my_r, buff, ++inc);
+        get_text_images_href(my_r, return_list, ++inc, stop_words, min_width);
         set_position(my_r, curr_pos);
     }
     
+    if(inc == 1) {
+        my_r->nco_pos = save_nco_pos;
+        get_next_element_curr_level(my_r);
+        get_text_images_href(my_r, return_list, ++inc, stop_words, min_width);
+    }
+    
     my_r->nco_pos = save_nco_pos;
+    
+    return return_list;
 }
 
 struct html_tree * check_html(struct tree_list *my_r, struct max_element *max) {
     struct html_tree * tag;
     long i = -1;
-    long count_words = 0, count_link = 0;
-    int element_id_form = get_tag_id(my_r->tags, "form");
+    
+    size_t istags= 26;
+    int skip_tags[istags];
+    skip_tags[0]  = get_tag_id(my_r->tags, "address");
+    skip_tags[1]  = get_tag_id(my_r->tags, "applet");
+    skip_tags[2]  = get_tag_id(my_r->tags, "audio");
+    skip_tags[3]  = get_tag_id(my_r->tags, "video");
+    skip_tags[4]  = get_tag_id(my_r->tags, "source");
+    skip_tags[5]  = get_tag_id(my_r->tags, "track");
+    skip_tags[6]  = get_tag_id(my_r->tags, "bgsound");
+    skip_tags[7]  = get_tag_id(my_r->tags, "canvas");
+    skip_tags[8]  = get_tag_id(my_r->tags, "datalist");
+    skip_tags[9]  = get_tag_id(my_r->tags, "button");
+    skip_tags[10] = get_tag_id(my_r->tags, "fieldset");
+    skip_tags[11] = get_tag_id(my_r->tags, "legend");
+    skip_tags[12] = get_tag_id(my_r->tags, "input");
+    skip_tags[13] = get_tag_id(my_r->tags, "keygen");
+    skip_tags[14] = get_tag_id(my_r->tags, "textarea");
+    skip_tags[15] = get_tag_id(my_r->tags, "frameset");
+    skip_tags[16] = get_tag_id(my_r->tags, "noframes");
+    skip_tags[17] = get_tag_id(my_r->tags, "label");
+    skip_tags[18] = get_tag_id(my_r->tags, "link");
+    skip_tags[19] = get_tag_id(my_r->tags, "map");
+    skip_tags[20] = get_tag_id(my_r->tags, "object");
+    skip_tags[21] = get_tag_id(my_r->tags, "progress");
+    skip_tags[22] = get_tag_id(my_r->tags, "time");
+    skip_tags[23] = get_tag_id(my_r->tags, "xmp");
+    skip_tags[24] = get_tag_id(my_r->tags, "footer");
+    skip_tags[25] = get_tag_id(my_r->tags, "noindex");
     
     struct html_tree *curr_element = get_curr_element(my_r);
     
-    while((tag = get_child_n(my_r, ++i))) {
-        count_link += tag->counts[AI_LINK];
+    if(curr_element->tag_id != get_tag_id(my_r->tags, "form"))
+    {
+        long count_words = curr_element->count_word;
+        long count_link = curr_element->counts[AI_LINK];
         
-        if(my_r->tags->ai[ tag->tag_id ] == AI_TEXT) {
-            count_words += tag->count_word;
+        while((tag = get_child_n(my_r, ++i))) {
+            count_link += tag->counts[AI_LINK];
+            
+            if(my_r->tags->ai[ tag->tag_id ] == AI_TEXT) {
+                count_words += tag->count_word;
+            }
+        }
+        
+        if((count_words > 0 && count_link > 0 && ((count_words / count_link) > 1) && max->count_words < count_words) || (max->count_words < count_words && count_link == 0))
+        {
+            max->count_words = count_words;
+            max->element = get_curr_element(my_r);
         }
     }
     
-    if((count_words > 0 && count_link > 0 && ((count_words / count_link) > 1) && max->count_words < count_words) || (max->count_words < count_words && count_link == 0))
-    {
-        max->count_words = count_words;
-        max->element = get_curr_element(my_r);
-    }
-    
+    int n = 0, t;
     i = -1;
+    
     while((tag = get_child_n(my_r, ++i))) {
         if(my_r->tags->ai[ tag->tag_id ] == AI_LINK) {
             continue;
         }
         
-        // skip form
-        if(tag->tag_id == element_id_form || my_r->tags->type[tag->tag_id] == TYPE_TAG_SIMPLE) {
+        n = 0;
+        for (t = 0; t < istags; t++) {
+            if(tag->tag_id == skip_tags[t]) {
+                n = 1;
+                break;
+            }
+        }
+        
+        if (n == 1)
             continue;
+        
+        if(my_r->tags->family[tag->tag_id] == FAMILY_SELECT) {
+            continue;
+        }
+        
+        if(my_r->tags->type[tag->tag_id] == TYPE_TAG_ONE || my_r->tags->type[tag->tag_id] == TYPE_TAG_SIMPLE || my_r->tags->type[tag->tag_id] == TYPE_TAG_SYS) {
+            continue;
+        }
+        
+        if(my_r->tags->extra[tag->tag_id] == EXTRA_TAG_SIMPLE) {
+            continue;
+        }
+        
+        if(tag->my_id > 0) {
+            if( find_stop_word_param(my_r->swords, &my_r->my[tag->my_id]) )
+                continue;
         }
         
         set_position(my_r, tag);
@@ -645,18 +707,18 @@ int init_tags(struct tags *tags) {
     
     // ++ form ++
     add_tag_R(tags, "form", 4, 0, 0, TYPE_TAG_BLOCK, 0, OPTION_NULL, AI_NULL);
-    add_tag_R(tags, "button", 6, 0, 0, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_NULL); 
+    add_tag_R(tags, "button", 6, 0, 0, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_NULL);
     
-        // ++ form: fieldset ++
-        add_tag_R(tags, "fieldset", 8, 0, 0, TYPE_TAG_BLOCK, 0, OPTION_NULL, AI_NULL);
-        add_tag_R(tags, "legend", 6, 0, 0, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_NULL);
-        // -- form: fieldset --
-        
-        // ++ form: select ++
-        add_tag_R(tags, "select", 6, 20, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS, AI_NULL);
-        add_tag_R(tags, "optgroup", 8, 19, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
-        add_tag_R(tags, "option", 6, 18, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
-        // -- form: select --
+    // ++ form: fieldset ++
+    add_tag_R(tags, "fieldset", 8, 0, 0, TYPE_TAG_BLOCK, 0, OPTION_NULL, AI_NULL);
+    add_tag_R(tags, "legend", 6, 0, 0, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_NULL);
+    // -- form: fieldset --
+    
+    // ++ form: select ++
+    add_tag_R(tags, "select", 6, 20, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS, AI_NULL);
+    add_tag_R(tags, "optgroup", 8, 19, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
+    add_tag_R(tags, "option", 6, 18, FAMILY_SELECT, TYPE_TAG_NORMAL, EXTRA_TAG_CLOSE_PRIORITY, OPTION_CLEAN_TAGS_SAVE, AI_NULL);
+    // -- form: select --
     
     add_tag_R(tags, "input", 5, 0, 0, TYPE_TAG_ONE, 0, OPTION_NULL, AI_NULL);
     add_tag_R(tags, "keygen", 6, 0, 0, TYPE_TAG_ONE, 0, OPTION_NULL, AI_NULL);
@@ -724,7 +786,7 @@ int init_tags(struct tags *tags) {
     
     add_tag_R(tags, "noembed", 7, 0, 0, TYPE_TAG_NORMAL, EXTRA_TAG_SIMPLE, OPTION_NULL, AI_NULL);
     
-    add_tag_R(tags, "noscript", 8, 0, 0, TYPE_TAG_NORMAL, EXTRA_TAG_SIMPLE_TREE, OPTION_NULL, AI_NULL);
+    add_tag_R(tags, "noscript", 8, 0, 0, TYPE_TAG_SYS, EXTRA_TAG_SIMPLE, OPTION_NULL, AI_NULL);
     
     add_tag_R(tags, "object", 6, 0, 0, TYPE_TAG_NORMAL, 0, OPTION_NULL, AI_NULL);
     
@@ -828,45 +890,45 @@ int check_open_tag (struct tree_list *my_r, struct elements *tree_curr, long ti,
     int res = 0;
     
     if(
-            tags->option[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == OPTION_CLEAN_TAGS &&
-            tags->option[ tag_id ] != OPTION_CLEAN_TAGS_SAVE
-    ){
+       tags->option[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == OPTION_CLEAN_TAGS &&
+       tags->option[ tag_id ] != OPTION_CLEAN_TAGS_SAVE
+       ){
         return OPTION_CLEAN_TAGS;
     }
     
     if(
-            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
-            tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_BLOCK
-    ){
+       tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
+       tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_BLOCK
+       ){
         long ir;
         for(ir = ti - 1; ir >= 1; ir--) {
             if(
-                tags->family[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] == tags->family[ tag_id ] &&
-                tags->priority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->priority[ tag_id ]
-            ){
+               tags->family[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] == tags->family[ tag_id ] &&
+               tags->priority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->priority[ tag_id ]
+               ){
                 return 1;
             }
         }
     }
     
     if(
-            tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
-            tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
-            tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->priority[tag_id]
-    ){
+       tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
+       tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
+       tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] > tags->priority[tag_id]
+       ){
         return 2;
     }
     else if(
             tags->extra[tag_id] == EXTRA_TAG_CLOSE_PRIORITY_FAMILY &&
             tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
             tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->priority[tag_id]
-    ){
+            ){
         long ir;
         for(ir = ti - 1; ir >= 1; ir--) {
             if(
-                    tags->family[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] == tags->family[ tag_id ] &&
-                    tags->priority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->priority[ tag_id ]
-            ){
+               tags->family[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] == tags->family[ tag_id ] &&
+               tags->priority[ tree_curr->tree[ tree_curr->index[ir] ].tag_id ] > tags->priority[ tag_id ]
+               ){
                 return 1;
             }
         }
@@ -880,33 +942,33 @@ int check_open_tag (struct tree_list *my_r, struct elements *tree_curr, long ti,
         }
     }
     else if(
-       //4) Закрываются только встречая себя:
-       (tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_SELF && tree_curr->tree[ tree_curr->index[ti] ].tag_id == tag_id) ||
-       //5) Закрываются только при встрече блочных элементов:
-       (tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_BLOCK && tags->type[tag_id] == TYPE_TAG_BLOCK) ||
-       (
-            tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_SELF_FAMILY &&
-            tags->family[tag_id] == tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] &&
-            tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] != 0
-       ) ||
-       (
-            tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_SELF_FAMILY &&
-            tree_curr->tree[ tree_curr->index[ti] ].tag_id == tag_id
-       ) ||
-       (
-            tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_PRIORITY &&
-            tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
-            tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] <= tags->priority[tag_id]
-        //EXTRA_TAG_CLOSE_PRIORITY
-       )
-    ) {
+            //4) Закрываются только встречая себя:
+            (tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_SELF && tree_curr->tree[ tree_curr->index[ti] ].tag_id == tag_id) ||
+            //5) Закрываются только при встрече блочных элементов:
+            (tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_BLOCK && tags->type[tag_id] == TYPE_TAG_BLOCK) ||
+            (
+             tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_SELF_FAMILY &&
+             tags->family[tag_id] == tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] &&
+             tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] != 0
+             ) ||
+            (
+             tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_IF_SELF_FAMILY &&
+             tree_curr->tree[ tree_curr->index[ti] ].tag_id == tag_id
+             ) ||
+            (
+             tags->extra[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == EXTRA_TAG_CLOSE_PRIORITY &&
+             tags->family[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == tags->family[tag_id] &&
+             tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] <= tags->priority[tag_id]
+             //EXTRA_TAG_CLOSE_PRIORITY
+             )
+            ) {
         return 1;
     }
     else if(
-                tags->type[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == TYPE_TAG_BLOCK &&
-                tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] != 0 && tags->priority[tag_id] != 0 &&
-                tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] >= tags->priority[tag_id]
-    ){
+            tags->type[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] == TYPE_TAG_BLOCK &&
+            tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] != 0 && tags->priority[tag_id] != 0 &&
+            tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] >= tags->priority[tag_id]
+            ){
         return 2;
     }
     
@@ -1031,7 +1093,7 @@ struct tags_family * init_tags_family(struct tags *tags){
     tags_family->irtags_size = 2048;
     tags_family->rtags = (int **)malloc(sizeof(int *) * tags_family->irtags_size);
     memset(tags_family->rtags, 0, tags_family->irtags_size);
-
+    
     int tag_id_table = get_tag_id(tags, "table");
     int tag_id_tr = get_tag_id(tags, "tr");
     int tag_id_td = get_tag_id(tags, "td");
@@ -1129,9 +1191,9 @@ void check_struct_level_down(struct tree_list *my_r, struct elements *tree_curr,
     }
     
     if(
-        my_r->tags->extra[ tree_curr->tree[level].tag_id ] == EXTRA_TAG_CLOSE_FAMILY_LIST &&
-        tree_curr->tree[level].tag_id <= tags_family->irtags &&
-        tags_family->rtags[ tree_curr->tree[level].tag_id ] != 0
+       my_r->tags->extra[ tree_curr->tree[level].tag_id ] == EXTRA_TAG_CLOSE_FAMILY_LIST &&
+       tree_curr->tree[level].tag_id <= tags_family->irtags &&
+       tags_family->rtags[ tree_curr->tree[level].tag_id ] != 0
        )
     {
         int tf = -1; int is_true = 0;
@@ -1225,19 +1287,19 @@ int close_all_element_by_tag_id(struct mem_tag *my, struct elements *tree_curr, 
 
 long close_this_jail(struct tree_list *my_r, struct tree_jail *tree_jail, struct elements *tree_curr, long i) {
     long ie, ei;
-
+    
     // закрываем все не закрытые теги внутри изолированной обработки
     int ti; long ni = i - 2;
     for(ti = tree_jail->elements[tree_jail->curr_element].lindex; ti >= 1; ti--) {
         if(tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti] ].tag_body_stop == -1){
             // сохраняем общее количество тегов
             tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti - 1] ].count_element_in +=
-                tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti] ].count_element_in;
+            tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti] ].count_element_in;
             
             int si;
             for(si = 0; si < AI_BUFF; si++) {
                 tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti - 1] ].counts_in[ si ] +=
-                    tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti] ].counts_in[ si ];
+                tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti] ].counts_in[ si ];
             }
             
             tree_jail->elements[tree_jail->curr_element].tree[ tree_jail->elements[tree_jail->curr_element].index[ti] ].tag_body_stop = ni;
@@ -1266,12 +1328,12 @@ long close_this_jail(struct tree_list *my_r, struct tree_jail *tree_jail, struct
     tree_jail->elements[ie].tree[ tree_jail->elements[ie].index[ti] ].count_element += 1;
     
     tree_jail->elements[ie].tree[ tree_jail->elements[ie].index[ti] ].count_element_in +=
-        tree_jail->elements[tree_jail->curr_element].tree[1].count_element_in + 1;
+    tree_jail->elements[tree_jail->curr_element].tree[1].count_element_in + 1;
     
     int si;
     for(si = 0; si < AI_BUFF; si++) {
         tree_jail->elements[ie].tree[ tree_jail->elements[ie].index[ti] ].counts_in[ si ] +=
-            tree_jail->elements[tree_jail->curr_element].tree[1].counts_in[ si ];
+        tree_jail->elements[tree_jail->curr_element].tree[1].counts_in[ si ];
     }
     
     if((tree_jail->elements[ie].ltree + tree_jail->elements[tree_jail->curr_element].ltree) >= tree_jail->elements[ie].ltree_size) {
@@ -1368,6 +1430,7 @@ void html_tree(struct tree_list *my_r)
     tree_curr->count = -1;
     tree_curr->is_base = 1;
     
+    tree_curr->tree[tree_curr->ltree].id               = 0;
     tree_curr->tree[tree_curr->ltree].tag_id           = -1;
     tree_curr->tree[tree_curr->ltree].my_id            = -1;
     tree_curr->tree[tree_curr->ltree].tag_body_start   = 0;
@@ -1402,10 +1465,10 @@ void html_tree(struct tree_list *my_r)
         if(
            (nc == '>' && is_open_key == 1) &&
            (
-                (my_buff != -1 && (my[my_buff].qo == '\0' || my[my_buff].qo == ' ')) ||
-                (is_comment != 0)
+            (my_buff != -1 && (my[my_buff].qo == '\0' || my[my_buff].qo == ' ')) ||
+            (is_comment != 0)
+            )
            )
-        )
         {
             if(is_comment != 0) {
                 if(is_comment == 1 && html[i-2] == '-' && html[i-3] == '-') {
@@ -1474,7 +1537,7 @@ void html_tree(struct tree_list *my_r)
                         if(tags->extra[ tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id ] == EXTRA_TAG_SIMPLE &&
                            tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_body_stop == -1 &&
                            tag_id != tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id
-                        ) {
+                           ) {
                             pos      = 0;
                             next_tag = 0;
                             my_buff--;
@@ -1515,7 +1578,7 @@ void html_tree(struct tree_list *my_r)
                                     
                                     if(min_id == tree_curr->tree[ tree_curr->index[ti] ].id)
                                         tree_curr->lindex--;
-                                        break;
+                                    break;
                                 }
                                 
                                 // проверка на приоритет тегов
@@ -1523,25 +1586,25 @@ void html_tree(struct tree_list *my_r)
                                     break;
                                 }
                                 else
-                                if(tag_id == tree_curr->tree[ tree_curr->index[ti] ].tag_id && tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop == -1) {
-                                    tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop = my[ my_buff ].start_otag - 2;
-                                    tree_curr->tree[ tree_curr->index[ti] ].tag_stop = i - 1;
-                                    
-                                    // сохраняем общее количество тегов
-                                    tree_curr->tree[ tree_curr->index[ti - 1] ].count_element_in += tree_curr->tree[ tree_curr->index[ti] ].count_element_in;
-                                    
-                                    int si;
-                                    for(si = 0; si < AI_BUFF; si++) {
-                                        tree_curr->tree[ tree_curr->index[ti - 1] ].counts_in[ si ] += tree_curr->tree[ tree_curr->index[ti] ].counts_in[ si ];
+                                    if(tag_id == tree_curr->tree[ tree_curr->index[ti] ].tag_id && tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop == -1) {
+                                        tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop = my[ my_buff ].start_otag - 2;
+                                        tree_curr->tree[ tree_curr->index[ti] ].tag_stop = i - 1;
+                                        
+                                        // сохраняем общее количество тегов
+                                        tree_curr->tree[ tree_curr->index[ti - 1] ].count_element_in += tree_curr->tree[ tree_curr->index[ti] ].count_element_in;
+                                        
+                                        int si;
+                                        for(si = 0; si < AI_BUFF; si++) {
+                                            tree_curr->tree[ tree_curr->index[ti - 1] ].counts_in[ si ] += tree_curr->tree[ tree_curr->index[ti] ].counts_in[ si ];
+                                        }
+                                        
+                                        tree_curr->lindex--;
+                                        break;
                                     }
-                                    
-                                    tree_curr->lindex--;
-                                    break;
-                                }
-                                else if(tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop == -1){
-                                    tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop = my[ my_buff ].start_otag - 2;
-                                    tree_curr->tree[ tree_curr->index[ti] ].tag_stop = i - 1;
-                                }
+                                    else if(tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop == -1){
+                                        tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop = my[ my_buff ].start_otag - 2;
+                                        tree_curr->tree[ tree_curr->index[ti] ].tag_stop = i - 1;
+                                    }
                                 
                                 if(tags->priority[ tree_curr->tree[ tree_curr->index[ti] ].tag_id ] <= tags->priority[tag_id]) {
                                     tree_curr->tree[ tree_curr->index[ti] ].tag_body_stop = my[ my_buff ].start_otag - 2;
@@ -1565,12 +1628,12 @@ void html_tree(struct tree_list *my_r)
                             
                             // сохраняем общее количество тегов
                             tree_curr->tree[ tree_curr->index[tree_curr->lindex - 1] ].count_element_in +=
-                                tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].count_element_in;
+                            tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].count_element_in;
                             
                             int si;
                             for(si = 0; si < AI_BUFF; si++) {
                                 tree_curr->tree[ tree_curr->index[tree_curr->lindex - 1] ].counts_in[ si ] +=
-                                    tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].counts_in[ si ];
+                                tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].counts_in[ si ];
                             }
                             
                             // уменьшаем уровень дерева
@@ -1589,13 +1652,13 @@ void html_tree(struct tree_list *my_r)
                 }
                 
                 // если мы на время возвращались к родителю и тег ради которого возвращались закрылся то переходим на уровень выше
-//                if(tree_curr->last_element_id != -1 && tree_curr->tree[tree_curr->last_element_id].tag_stop != -1) {
-//                    tree_curr->last_element_id = -1;
-//                    
-//                    tree_jail.curr_element = tree_curr->next;
-//                    tree_curr->next = -1;
-//                    tree_curr = &tree_jail.elements[tree_jail.curr_element];
-//                }
+                //                if(tree_curr->last_element_id != -1 && tree_curr->tree[tree_curr->last_element_id].tag_stop != -1) {
+                //                    tree_curr->last_element_id = -1;
+                //
+                //                    tree_jail.curr_element = tree_curr->next;
+                //                    tree_curr->next = -1;
+                //                    tree_curr = &tree_jail.elements[tree_jail.curr_element];
+                //                }
                 
                 my_buff--;
             }
@@ -1800,7 +1863,7 @@ void html_tree(struct tree_list *my_r)
                            tags->family[tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id] == FAMILY_TABLE &&
                            tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != tag_id_td &&
                            tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != tag_id_th
-                        ){
+                           ){
                             long next_element = tree_jail.curr_element;
                             
                             tree_jail.curr_element = tree_curr->prev;
@@ -1819,7 +1882,7 @@ void html_tree(struct tree_list *my_r)
                        tags->family[tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id] == FAMILY_TABLE &&
                        tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != tag_id_td &&
                        tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != tag_id_th
-                    ) {
+                       ) {
                         long ie = close_this_jail(my_r, &tree_jail, tree_curr, i);
                         
                         tree_jail.curr_element = ie;
@@ -1854,6 +1917,7 @@ void html_tree(struct tree_list *my_r)
                     tree_curr->count = -1;
                     tree_curr->is_base = 0;
                     
+                    tree_curr->tree[tree_curr->ltree].id               = 0;
                     tree_curr->tree[tree_curr->ltree].tag_id           = -1;
                     tree_curr->tree[tree_curr->ltree].my_id            = -1;
                     tree_curr->tree[tree_curr->ltree].tag_body_start   = 0;
@@ -2033,14 +2097,14 @@ void html_tree(struct tree_list *my_r)
                 }
                 
                 // если текущая решетка была вызвана для добавления не нужных данных из последующей, и данные эти закрыты то возвращаемся к ней
-//                if(tree_curr->last_element_id != -1 && tree_curr->tree[tree_curr->last_element_id].tag_stop != -1) {
-//                    tree_curr->last_element_id = -1;
-//                    
-//                    tree_jail.curr_element = tree_curr->next;
-//                    tree_curr->next = -1;
-//                    
-//                    tree_curr = &tree_jail.elements[tree_jail.curr_element];
-//                }
+                //                if(tree_curr->last_element_id != -1 && tree_curr->tree[tree_curr->last_element_id].tag_stop != -1) {
+                //                    tree_curr->last_element_id = -1;
+                //
+                //                    tree_jail.curr_element = tree_curr->next;
+                //                    tree_curr->next = -1;
+                //
+                //                    tree_curr = &tree_jail.elements[tree_jail.curr_element];
+                //                }
             }
             
             pos      = 0;
@@ -2057,7 +2121,7 @@ void html_tree(struct tree_list *my_r)
                     if(tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != -1 &&
                        tags->extra[ tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id ] == EXTRA_TAG_SIMPLE &&
                        tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_stop == -1
-                    ) {
+                       ) {
                         if(html[i] == '!'){
                             if(html[i+1] == '-' && html[i+2] == '-') {
                                 is_comment = 1;
@@ -2093,14 +2157,14 @@ void html_tree(struct tree_list *my_r)
                         
                         // если текущая решетка была вызвана для добавления не нужных данных из последующей, и данные эти закрыты то возвращаемся к ней
                         // это нужно для того, что бы правельно закрылся текстовый элемент (таг_ид 0) если он оказался между табличными тегами, но не в TD или TH
-//                        if(tree_curr->last_element_id != -1 && tree_curr->tree[tree_curr->last_element_id].tag_stop != -1) {
-//                            tree_curr->last_element_id = -1;
-//                            
-//                            tree_jail.curr_element = tree_curr->next;
-//                            tree_curr->next = -1;
-//                            
-//                            tree_curr = &tree_jail.elements[tree_jail.curr_element];
-//                        }
+                        //                        if(tree_curr->last_element_id != -1 && tree_curr->tree[tree_curr->last_element_id].tag_stop != -1) {
+                        //                            tree_curr->last_element_id = -1;
+                        //
+                        //                            tree_jail.curr_element = tree_curr->next;
+                        //                            tree_curr->next = -1;
+                        //
+                        //                            tree_curr = &tree_jail.elements[tree_jail.curr_element];
+                        //                        }
                     }
                     
                     text_position = -1;
@@ -2151,8 +2215,8 @@ void html_tree(struct tree_list *my_r)
                         text_position = i - 1;
                     
                     if(nc != ' ' && (nc < '\x09' || nc > '\x0D') && (tree_curr->tree[ tree_curr->ltree ].tag_id != DEFAULT_TAG_ID ||
-                        (tree_curr->tree[ tree_curr->ltree ].tag_id == DEFAULT_TAG_ID && tree_curr->tree[ tree_curr->ltree ].tag_body_stop != -1)
-                    )) {
+                                                                     (tree_curr->tree[ tree_curr->ltree ].tag_id == DEFAULT_TAG_ID && tree_curr->tree[ tree_curr->ltree ].tag_body_stop != -1)
+                                                                     )) {
                         int inc_offset = 0;
                         
                         // если у нас текстовый элемент и он находится не в TD или TH то переносим его в родителя
@@ -2173,7 +2237,7 @@ void html_tree(struct tree_list *my_r)
                                     if(tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != tag_id_td &&
                                        tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != tag_id_th &&
                                        tree_curr->tree[ tree_curr->index[tree_curr->lindex] ].tag_id != -1
-                                    ){
+                                       ){
                                         // проверка будет ли входит в последний элемент родителя этот изолированный тег
                                         int ti;
                                         int tag_ool = tree_jail.elements[tree_jail.curr_element].lindex;
@@ -2763,7 +2827,7 @@ struct html_tree * get_element_by_name_in_level(struct tree_list *my_r, char *ta
         if(my_r->cur_pos < my_r->tags->index.tag_id[tag_id][i] &&
            i_level == my_r->list[ my_r->tags->index.tag_id[tag_id][i] ].inc &&
            (max_id == -1 || (max_id > my_r->tags->index.tag_id[tag_id][i]))
-        ) {
+           ) {
             if(il == position) {
                 cpos = i;
                 break;
@@ -3040,6 +3104,9 @@ struct mem_params * find_param_by_key_in_element(struct mem_tag *my, char *key) 
     long p;
     struct mem_params *np = NULL;
     
+    if (my->params == NULL)
+        return np;
+    
     for (p = 0; p <= my->lparams; p++) {
         long k;
         for (k = 0; k <= my->params[p].lkey; k++) {
@@ -3111,6 +3178,9 @@ void clean_tree(struct tree_list * my_r) {
         my_r->tags->family   = NULL;
         my_r->tags->option   = NULL;
     }
+    
+    if(my_r->swords != NULL)
+        free(my_r->swords);
     
     if(my_r->tags_family != NULL) {
         long ld;
@@ -3485,7 +3555,156 @@ void clean_tree_entity(struct tree_entity *entities) {
     }
 }
 
+struct mem_stop_words * add_stop_word_params(struct mem_stop_words *swords, char *key, size_t ksize, char *value, size_t vsize)
+{
+    if(swords == NULL) {
+        swords = malloc(sizeof(struct mem_stop_words));
+        
+        swords->params_size = sizeof(struct mem_params) * 1024;
+        swords->lparams = -1;
+        swords->mem_params = malloc(swords->params_size);
+    }
+    
+    swords->lparams++;
+    
+    if(swords->lparams >= swords->params_size) {
+        swords->params_size += sizeof(struct mem_params) * 1024;
+        swords->mem_params = realloc(swords->mem_params, swords->params_size);
+    }
+    
+    swords->mem_params[swords->lparams].key = malloc(sizeof(char) * ksize + 1);
+    swords->mem_params[swords->lparams].lkey = (int)ksize;
+    swords->mem_params[swords->lparams].lkey_size = (int)ksize;
+    strncpy(swords->mem_params[swords->lparams].key, key, ksize);
+    
+    swords->mem_params[swords->lparams].value = malloc(sizeof(char) * vsize + 1);
+    swords->mem_params[swords->lparams].lvalue = (int)vsize;
+    swords->mem_params[swords->lparams].lvalue_size = (int)vsize;
+    strncpy(swords->mem_params[swords->lparams].value, value, vsize);
+    
+    return swords;
+}
 
+void * clean_stop_word_params(struct mem_stop_words *swords) {
+    if (swords == NULL || swords->mem_params == NULL)
+        return NULL;
+    
+    int si;
+    
+    for(si = 0; si <= swords->lparams; si++) {
+        free(swords->mem_params[si].key);
+        free(swords->mem_params[si].value);
+    }
+    
+    free(swords->mem_params);
+    swords->mem_params = NULL;
+    swords->lparams = -1;
+    swords->params_size = 0;
+    
+    free(swords);
+    
+    return NULL;
+}
+
+int compare_param_by_nt(struct mem_params *curp, char *value, size_t size_value)
+{
+    if (curp == NULL
+        || (value[0] == '^' && curp->lvalue < (size_value - 1))
+        || (value[0] != '^' && curp->lvalue < size_value))
+        return 0;
+    
+    long i, t = 0;
+    
+    if(value[0] == '^') {
+        t = 1;
+        for(i = 1; i < size_value; i++) {
+            if (value[i] != curp->value[i-1]) {
+                t = 0;
+                break;
+            }
+        }
+        
+        i = t == 0 ? -1 : size_value;
+    }
+    else {
+        for(i = 0; i < size_value; i++) {
+            if (t > curp->lvalue) {
+                break;
+            }
+            else if (value[i] != curp->value[t]) {
+                i = -1;
+            }
+            
+            t++;
+        }
+    }
+    
+    return i == size_value;
+}
+
+int find_stop_word_param(struct mem_stop_words *swords, struct mem_tag *mtag) {
+    int cm = 0;
+    
+    if (swords == NULL || mtag == NULL)
+        return cm;
+    
+    long cw;
+    for (cw = 0; cw <= swords->lparams; cw++) {
+        struct mem_params *curp = find_param_by_key_in_element(mtag, swords->mem_params[cw].key);
+        int resc = compare_param_by_nt(curp, swords->mem_params[cw].value, swords->mem_params[cw].lvalue);
+        
+        if(resc == 1) {
+            cm = 1;
+            break;
+        }
+    }
+    
+    return cm;
+}
+
+void * clean_return_list(struct return_list *return_list) {
+    if (return_list == NULL)
+        return NULL;
+    
+    free(return_list->list);
+    return_list->list = NULL;
+    free(return_list);
+    
+    return NULL;
+}
+
+
+
+
+
+
+HV * get_element_property_by_my(htmltag_t *my_r, struct mem_tag *mem_tag, int is_utf8) {
+    SV **ha;
+    HV *hash = newHV();
+    
+    HV *hash_prop = newHV();
+    if(mem_tag != NULL) {
+        long si;
+        for(si = 0; si <= mem_tag->lparams; si++) {
+            if(mem_tag->params[si].lvalue > 0) {
+                SV *nm = newSVpv(mem_tag->params[si].value, mem_tag->params[si].lvalue - 1);
+                
+                if(is_utf8) {
+                   SvUTF8_on(nm);
+                }
+                ha = hv_store(hash_prop, mem_tag->params[si].key, mem_tag->params[si].lkey - 1, nm, 0);
+            } else {
+                ha = hv_store(hash_prop, mem_tag->params[si].key, mem_tag->params[si].lkey - 1, &PL_sv_undef, 0);
+            }
+        }
+        
+        ha = hv_store(hash, "prop"  , 4, newRV_noinc((SV*)hash_prop), 0);
+        ha = hv_store(hash, "start" , 5, newSViv(mem_tag->start_otag), 0);
+        ha = hv_store(hash, "stop"  , 4, newSViv(mem_tag->stop_otag) , 0);
+    }
+    
+    return hash;
+}
 
 HV * get_element_property_by_id(htmltag_t *my_r, long id, int is_utf8) {
     long my_id = my_r->list[id].my_id;
@@ -3559,10 +3778,11 @@ new(char * class, ...)
     CODE:
         htmltag_t *my_r = malloc(sizeof(htmltag_t));
         
-        my_r->entities = create_entity_tree();
-        my_r->tags = NULL;
-        my_r->list = NULL;
-        my_r->my   = NULL;
+        my_r->entities    = create_entity_tree();
+        my_r->tags        = NULL;
+        my_r->list        = NULL;
+        my_r->my          = NULL;
+        my_r->swords      = NULL;
         my_r->tags_family = NULL;
         
         my_r->my_count      = -1;
@@ -3573,13 +3793,28 @@ new(char * class, ...)
         RETVAL
 
 void
-analyze(my_r, html)
+analyze(my_r, html, hashref = &PL_sv_undef)
     HTML::Content::Extractor my_r;
     char *html;
-
+    SV *hashref;
+    
     CODE:
         //setbuf(stdout, NULL);
         
+        HV * myhash;
+        HE * entry;
+        STRLEN retlen;
+        I32 len;
+        
+        char * key;
+        SV * hashval;
+        char *value;
+        
+        AV* arrayh;
+        char **elements;
+        int elem_size = -1;
+        
+        my_r->swords = clean_stop_word_params(my_r->swords);
         clean_tree(my_r);
         
         if(my_r->tags)
@@ -3592,6 +3827,35 @@ analyze(my_r, html)
         
         my_r->html = html;
         html_tree(my_r);
+        
+        if(SvROK(hashref)) {
+            myhash = (HV *)SvRV(hashref);
+            (void)hv_iterinit(myhash);
+            while ((entry = hv_iternext(myhash)))  {
+                key = hv_iterkey(entry,&len);
+                hashval = hv_iterval(myhash,entry);
+                
+                if(SvROK(hashval) && SvTYPE(SvRV(hashval)) == SVt_PVAV) {
+                    arrayh = (AV*)SvRV(hashval);
+                    
+                    elem_size = av_len(arrayh);
+                    
+                    char *tmp;
+                    int i;
+                    STRLEN len_s;
+                    for (i = 0; i <= elem_size; i++) {
+                        SV** elem = av_fetch(arrayh, i, 0);
+                        char *nml = (char *)SvPV(*elem, len_s);
+                        if(elem != NULL)
+                            my_r->swords = add_stop_word_params(my_r->swords, key, (size_t)len, nml, (size_t)len_s);
+                    }
+                }
+                else {
+                    value = SvPV(hashval,retlen);
+                    my_r->swords = add_stop_word_params(my_r->swords, key, (size_t)len, value, (size_t)retlen);
+                }
+            }
+        }
         
         struct max_element my_max = {0, NULL};
         struct html_tree * max_element = check_html(my_r, &my_max);
@@ -3715,48 +3979,95 @@ get_raw_text(my_r, is_utf8 = 1)
         RETVAL
 
 SV*
-get_main_images(my_r, is_utf8 = 1)
+get_main_images(my_r, is_utf8 = 1, hashref = &PL_sv_undef, min_width = 100)
     HTML::Content::Extractor my_r;
     int is_utf8;
+    SV *hashref;
+    int min_width;
     
     CODE:
+        //setbuf(stdout, NULL);
         AV* array = newAV();
+        
+        HV * myhash;
+        HE * entry;
+        STRLEN retlen;
+        I32 len;
+        
+        char * key;
+        SV * hashval;
+        char *value;
+        
+        AV* arrayh;
+        char **elements;
+        int elem_size = -1;
+        
+        struct mem_stop_words *img_stop = NULL;
+        
+        if(SvROK(hashref)) {
+            myhash = (HV *)SvRV(hashref);
+            (void)hv_iterinit(myhash);
+            while ((entry = hv_iternext(myhash)))  {
+                key = hv_iterkey(entry,&len);
+                hashval = hv_iterval(myhash,entry);
+                
+                if(SvROK(hashval) && SvTYPE(SvRV(hashval)) == SVt_PVAV) {
+                    arrayh = (AV*)SvRV(hashval);
+                    
+                    elem_size = av_len(arrayh);
+                    
+                    char *tmp;
+                    int i;
+                    STRLEN len_s;
+                    for (i = 0; i <= elem_size; i++) {
+                        SV** elem = av_fetch(arrayh, i, 0);
+                        char *nml = (char *)SvPV(*elem, len_s);
+                        if(elem != NULL)
+                            img_stop = add_stop_word_params(img_stop, key, (size_t)len, nml, (size_t)len_s);
+                    }
+                }
+                else {
+                    value = SvPV(hashval,retlen);
+                    img_stop = add_stop_word_params(img_stop, key, (size_t)len, value, (size_t)retlen);
+                    //printf("-gg------ %s(%ld), %s(%ld)\n", key, (size_t)len, value, (size_t)retlen);
+                }
+            }
+        }
         
         if(my_r->list == NULL || my_r->my == NULL || my_r->tags == NULL) {
             RETVAL = newRV_noinc((SV*)array);
         }
         else {
-            struct mlist list = {-1, 128};
-            get_text_images_href(my_r, &list, 0);
+            struct return_list *return_list = NULL;
+            return_list = get_text_images_href(my_r, return_list, 0, img_stop, min_width);
             
-            if(list.i < 0) {
+            if(return_list->count < 0) {
                 RETVAL = newRV_noinc((SV*)array);
             } else {
                 if(is_utf8) {
-                    int i;
-                    for (i = 0; i <= list.i; i++) {
-                        SV *nm = newSVpv(list.buff[i], 0);
-                        SvUTF8_on(nm);
-                        av_push(array, nm);
+                    long i;
+                    for (i = 0; i <= return_list->real_count; i++) {
+                        av_push(array, newRV_noinc((SV*)get_element_property_by_my(my_r, &return_list->list[i], 1)));
+                        
+                        //for (p = 0; p <= return_list->list[i].lparams; p++) {
+                        //    printf("%s=%s\n", return_list->list[i].params[p].key, return_list->list[i].params[p].value);
+                        //}
                     }
                     
                     RETVAL = newRV_noinc((SV*)array);
                 } else {
-                    int i;
-                    for (i = 0; i <= list.i; i++) {
-                        av_push(array, newSVpv(list.buff[i], 0));
+                    long i;
+                    for (i = 0; i <= return_list->real_count; i++) {
+                        av_push(array, newRV_noinc((SV*)get_element_property_by_my(my_r, &return_list->list[i], 0)));
                     }
                     
                     RETVAL = newRV_noinc((SV*)array);
                 }
             }
             
-            unsigned int im;
-            for (im = 0; im <= list.i; im++) {
-                free(list.buff[im]);
-            }
+            img_stop = clean_stop_word_params(img_stop);
             
-            free(list.buff);
+            return_list = clean_return_list(return_list);
         }
     OUTPUT:
         RETVAL
@@ -4406,6 +4717,8 @@ DESTROY(my_r)
     HTML::Content::Extractor my_r;
     
     CODE:
+        my_r->swords = clean_stop_word_params(my_r->swords);
+        
         clean_tree_entity(my_r->entities);
         if(my_r->entities)
             free(my_r->entities);

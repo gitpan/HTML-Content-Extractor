@@ -15,7 +15,7 @@ my $obj = HTML::Content::Extractor->new();
 $obj->analyze($html);
 
 my $images = $obj->get_main_images();
-if(ref $images eq "ARRAY" && exists $images->[0] && $images->[0] eq "http://rammstein.ru/uploads/posts/2011-11/1321515382_rammstein-lifad.jpg") {
+if(ref $images eq "ARRAY" && exists $images->[0] && $images->[0]->{prop}->{src} eq "http://rammstein.ru/uploads/posts/2011-11/1321515382_rammstein-lifad.jpg") {
         print "ok 1\n";
 } else {
         print "not ok 1\n";

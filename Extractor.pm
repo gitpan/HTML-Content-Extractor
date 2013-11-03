@@ -5,7 +5,7 @@ use strict;
 use vars qw($AUTOLOAD $VERSION $ABSTRACT @ISA @EXPORT);
 
 BEGIN {
-	$VERSION = 0.16;
+	$VERSION = 0.17;
 	$ABSTRACT = "Recieving main text of publication from HTML page and main media content that is bound to the text";
 	
 	@ISA = qw(Exporter DynaLoader);
@@ -25,6 +25,7 @@ use DynaLoader ();
 use Exporter ();
 
 
+
 1;
 
 __END__
@@ -36,10 +37,10 @@ HTML::Content::Extractor - Recieving a main text of publication from HTML page a
 =head1 SYNOPSIS
 
  my $obj = HTML::Content::Extractor->new();
- $obj->analyze($html);
+ $obj->analyze($html, {class => ["comment", "tags", "blog", "theme", "footer", "head"]});
  
  my $main_text    = $obj->get_main_text();
- my $main_images  = $obj->get_main_images();
+ my $main_images  = $obj->get_main_images(1, {src => "logo", alt => ["logo", "crazy"]}, 150);
  
  my $raw_text     = $obj->get_raw_text();
  my $main_text_we = $obj->get_main_text_with_elements(1, ["a", "b", "br", "strike", ...]);
@@ -47,8 +48,8 @@ HTML::Content::Extractor - Recieving a main text of publication from HTML page a
  print $main_text, "\n\n";
  
  print "Images:\n";
- foreach my $url (@$main_images) {
-	print $url, "\n";
+ foreach my $elem (@$main_images) {
+	print $elem->{prop}->{src}, "\n";
  }
  
  # html elements
@@ -67,7 +68,7 @@ HTML::Content::Extractor - Recieving a main text of publication from HTML page a
 	
 	print ">\n";
  }
- 
+
 =head1 DESCRIPTION
 
 This module analyzes an HTML document and extracts the main text (for example front page article contents on the news site) and all related images.
@@ -82,9 +83,10 @@ Creates and prepares the structure for the subsequent analysis and parsing HTML.
 
 =head2 analyze
 
- $obj->analyze($html);
+ $obj->analyze($html, [hashref]);
     
 Creates an HTML document tree and analyzes it.
+[hashref] - optional parameter which may (or may not) contain key-value pairs, where key is name of html tag attribute and its value is stop word, which will be ignored with all child tags. Useful for common tags for header/footer/logo etc.
 
 =head2 get_main_text
 
@@ -119,12 +121,13 @@ Returns the main text while saving selected html tags. Post-processing is skippe
 =head2 get_main_images
 
  # UTF-8
- my $main_images = $obj->get_main_images(1);
+ my $main_images = $obj->get_main_images(1, [hashref], [min_width]);
  # or not
- my $main_images = $obj->get_main_images(0);
+ my $main_images = $obj->get_main_images(0, [hashref], [min_width]);
  # default UTF-8 is on
 
-Returns ARRAY with pictures URL.
+[hashref] - optional parameter which may (or may not) contain key-value pairs, where key is name of html tag attribute and its value is stop word, which will be ignored with all child tags. Useful for common tags for header/footer/logo etc.
+[min_width] - optional parameter
 
 =head2 build_tree
 
